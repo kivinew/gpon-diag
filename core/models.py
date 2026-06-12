@@ -47,6 +47,8 @@ class OntMetrics:
     vendor_pn: str = ""
     upstream_errors: int = 0
     downstream_errors: int = 0
+    eth_errors: dict = field(default_factory=dict)   # {lan_id: {fcs: int, received_bad_bytes: int, sent_bad_bytes: int}}
+    downstream_errors: int = 0
     lan_ports: list = field(default_factory=list)
     mac_devices: list = field(default_factory=list)
     ip_address: str = ""
