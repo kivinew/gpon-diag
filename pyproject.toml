@@ -1,0 +1,10 @@
+[project]
+name = "gpon-diag"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "pyyaml>=6.0.3",
+    "telnetlib3>=4.0.4",
+]

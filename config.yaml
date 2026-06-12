@@ -1,0 +1,54 @@
+# GPON Diagnostic Framework — Configuration
+
+# OLT List
+olts:
+  - name: "OLT-17.232"
+    host: "172.16.17.232"
+    port: 23
+    username: "kudryavcev.iv"
+    password: "hard5gznm"
+  - name: "OLT-40.111"
+    host: "172.16.40.111"
+    port: 23
+    username: "kudryavcev.iv"
+    password: "hard5gznm"
+
+# Diagnostic thresholds
+thresholds:
+  ont_rx_power_warn_dbm: -26.0     # ONT input signal low
+  ont_rx_power_crit_dbm: -30.0     # ONT input signal critical
+  olt_rx_power_warn_dbm: -32.0     # OLT reverse signal low
+  olt_rx_power_crit_dbm: -35.0     # OLT reverse signal critical
+  bip_error_warn: 10000            # BIP errors warning
+  bip_error_crit: 100000           # BIP errors critical
+  cpu_temp_warn_c: 75              # CPU temperature warning
+  cpu_temp_crit_c: 85              # CPU temperature critical
+  cpu_usage_warn_pct: 80           # CPU usage warning
+  memory_usage_warn_pct: 85        # Memory usage warning
+  distance_warn_m: 5000            # Distance warning (long line)
+  distance_crit_m: 10000           # Distance critical
+
+# Known bad firmware versions (space-separated)
+bad_versions:
+  - "V1R003C00S108"
+  - "V1R006C00S130"
+  - "V1R006C00S205"
+  - "V1R006C00S201"
+  - "V1R006C01S201"
+
+# ONT models that don't respond to ping
+no_ping_models:
+  - "310"
+
+# Report settings
+report:
+  format: "text"                   # text | json
+  save_to_file: true
+  reports_dir: "data/reports"
+  include_timestamp: true
+
+# Ping target for ONT remote ping
+ping_target: "1.1.1.1"
+
+# MAC OUI database path
+oui_db_path: "data/oui.txt"
