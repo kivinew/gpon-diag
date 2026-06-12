@@ -5,8 +5,16 @@ import time
 
 HOST = '172.16.17.232'
 PORT = 23
-USER = 'kudryavcev.iv'
-PASS = 'hard5gznm'
+
+# Use environment variables to avoid committing secrets.
+# Example (PowerShell):
+#   $env:GPON_OLT_17_232_USERNAME="user"; $env:GPON_OLT_17_232_PASSWORD="pass"
+import os
+USER = os.getenv('GPON_OLT_17_232_USERNAME', '')
+PASS = os.getenv('GPON_OLT_17_232_PASSWORD', '')
+
+if not USER or not PASS:
+    raise SystemExit('Missing credentials. Set GPON_OLT_17_232_USERNAME/PASSWORD in environment.')
 
 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 s.settimeout(15)

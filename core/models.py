@@ -1,7 +1,10 @@
 """Data models for GPON diagnostic framework."""
 
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass

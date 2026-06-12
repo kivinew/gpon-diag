@@ -1,8 +1,11 @@
 """Diagnostic engine — rule-based ONT diagnosis."""
 
+import logging
 from core.models import OntMetrics
 from core.report import DiagnosisProblem
 from core.thresholds import Thresholds
+
+logger = logging.getLogger(__name__)
 
 
 class Rule:
@@ -36,8 +39,8 @@ class DiagnosticEngine:
                         problems.extend(result)
                     else:
                         problems.append(result)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"Rule '{rule.name}' failed: {e}")
         return sorted(problems, key=lambda p: p.sort_key)
 
 
@@ -181,7 +184,7 @@ def rule_high_temperature(metrics, t):
 
 def rule_low_voltage(metrics, t):
     """Check supply voltage — below 3.0V is critical."""
-    if not metrics.is_online or metrics.supply_voltage < 0:
+    if not metrics.is_online or metrics.supply_voltage < 0 or metrics.supply_voltage >= 900:
         return None
     if metrics.supply_voltage < 3.0:
         return DiagnosisProblem("critical", "hardware",

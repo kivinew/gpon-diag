@@ -1,7 +1,10 @@
 """Parser — converts raw Huawei CLI output into OntMetrics."""
 
+import logging
 import re
 from core.models import OntMetrics, LanPort, MacDevice
+
+logger = logging.getLogger(__name__)
 
 
 PATTERNS = {

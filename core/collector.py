@@ -1,8 +1,11 @@
 """Collector — connects to OLT via telnetlib3, runs commands, returns raw output."""
 
 import asyncio
+import logging
 import re
 from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 
 MORE_PROMPT = "---- More ( Press 'Q' to break ) ----"
@@ -30,8 +33,8 @@ class TelnetCollector:
         if self._writer:
             try:
                 self._writer.close()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"Error closing writer: {e}")
 
     def __enter__(self):
         self.connect()
@@ -126,6 +129,13 @@ class TelnetCollector:
         return self._loop.run_until_complete(self._send_cmd(command, max_more))
 
     def collect_ont(self, frame, slot, port, ont_id):
+        """Collect ONT data with parameter validation."""
+        # Validate parameters
+        for param_name, param_value in [("frame", frame), ("slot", slot), 
+                                         ("port", port), ("ont_id", ont_id)]:
+            if not re.fullmatch(r'\d+', param_value):
+                raise ValueError(f"Invalid {param_name}: {param_value}")
+        
         results = {}
 
         results["ont_info"] = self.send_command(

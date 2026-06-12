@@ -5,28 +5,24 @@ olts:
   - name: "OLT-17.232"
     host: "172.16.17.232"
     port: 23
-    username: "kudryavcev.iv"
-    password: "hard5gznm"
   - name: "OLT-40.111"
     host: "172.16.40.111"
     port: 23
-    username: "kudryavcev.iv"
-    password: "hard5gznm"
 
 # Diagnostic thresholds
 thresholds:
-  ont_rx_power_warn_dbm: -26.0     # ONT input signal low
+  ont_rx_power_warn_dbm: -26.5     # ONT input signal low
   ont_rx_power_crit_dbm: -30.0     # ONT input signal critical
-  olt_rx_power_warn_dbm: -32.0     # OLT reverse signal low
+  olt_rx_power_warn_dbm: -33.0     # OLT reverse signal low
   olt_rx_power_crit_dbm: -35.0     # OLT reverse signal critical
   bip_error_warn: 10000            # BIP errors warning
   bip_error_crit: 100000           # BIP errors critical
   cpu_temp_warn_c: 75              # CPU temperature warning
-  cpu_temp_crit_c: 85              # CPU temperature critical
-  cpu_usage_warn_pct: 80           # CPU usage warning
+  cpu_temp_crit_c: 90              # CPU temperature critical
+  cpu_usage_warn_pct: 90           # CPU usage warning
   memory_usage_warn_pct: 85        # Memory usage warning
-  distance_warn_m: 5000            # Distance warning (long line)
-  distance_crit_m: 10000           # Distance critical
+  distance_warn_m: 18000           # Distance warning (long line)
+  distance_crit_m: 20000           # Distance critical
 
 # Known bad firmware versions (space-separated)
 bad_versions:

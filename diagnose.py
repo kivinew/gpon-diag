@@ -3,10 +3,14 @@
 
 import argparse
 import json
+import logging
 import os
 import sys
 import re
 from datetime import datetime
+
+logging.basicConfig(level=logging.WARNING, format='%(levelname)s: %(message)s')
+logger = logging.getLogger(__name__)
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -25,8 +29,17 @@ from core.olt import get_olt_connection, close_all
 
 
 def load_config(path="config.yaml"):
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"Config file '{path}' not found")
     with open(path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f)
+
+
+def sanitize_ont_param(value: str) -> str:
+    """Validate ONT parameter contains only digits."""
+    if not re.fullmatch(r'\d+', value):
+        raise ValueError(f"Invalid ONT parameter '{value}': must contain only digits")
+    return value
 
 
 def parse_input(buffer):
@@ -43,11 +56,39 @@ def parse_input(buffer):
     raise ValueError(f"Cannot recognize: '{buffer}'")
 
 
+def _olt_secret_key(olt_name: str) -> str:
+    # OLT-17.232 -> 17_232
+    return ''.join(ch if ch.isalnum() else '_' for ch in olt_name).replace('__', '_').strip('_')
+
+
+def _load_olt_credentials(olt_config: dict):
+    # Priority: env vars by OLT name
+    olt_name = olt_config.get('name', '')
+    key = _olt_secret_key(olt_name) if olt_name else ''
+    if key:
+        username = os.getenv(f"GPON_OLT_{key}_USERNAME", '')
+        password = os.getenv(f"GPON_OLT_{key}_PASSWORD", '')
+        if username and password:
+            return username, password
+
+    # Fallback: try by host
+    host = olt_config.get('host', '')
+    host_key = ''.join(ch if ch.isalnum() else '_' for ch in host).replace('__', '_').strip('_')
+    username = os.getenv(f"GPON_OLT_{host_key}_USERNAME", '')
+    password = os.getenv(f"GPON_OLT_{host_key}_PASSWORD", '')
+    return username, password
+
+
 def run_diagnosis(input_data, olt_config, thresholds):
     host = olt_config["host"]
     port = olt_config.get("port", 23)
-    username = olt_config.get("username", "")
-    password = olt_config.get("password", "")
+    username, password = _load_olt_credentials(olt_config)
+    if not username or not password:
+        logger.error(
+            f"Missing OLT credentials for '{olt_config.get('name', host)}'. "
+            f"Set env GPON_OLT_<OLT_NAME>_USERNAME/PASSWORD."
+        )
+        sys.exit(2)
 
     # Get singleton OLT connection
     olt = get_olt_connection(host, port, username, password)
@@ -65,7 +106,12 @@ def run_diagnosis(input_data, olt_config, thresholds):
             return DiagnosisReport(datetime.now().isoformat(), olt_config.get("name", host), OntMetrics(), [], True)
         input_data.update(loc)
 
-    raw_data = olt.collect_ont(input_data["frame"], input_data["slot"], input_data["port"], input_data["ont_id"])
+    raw_data = olt.collect_ont(
+        sanitize_ont_param(input_data["frame"]),
+        sanitize_ont_param(input_data["slot"]),
+        sanitize_ont_param(input_data["port"]),
+        sanitize_ont_param(input_data["ont_id"]),
+    )
 
     # Build metrics
     metrics = OntMetrics()
@@ -104,7 +150,11 @@ def main():
     parser.add_argument("--no-save", action="store_true")
     args = parser.parse_args()
 
-    config = load_config(args.config)
+    try:
+        config = load_config(args.config)
+    except FileNotFoundError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
 
     olt_config = None
     for olt in config.get("olts", []):
@@ -113,12 +163,14 @@ def main():
         if not args.olt:
             olt_config = olt; break
     if not olt_config:
-        print("Error: OLT not found", file=sys.stderr); sys.exit(1)
+        print("Error: OLT not found. Use --olt to specify OLT name.", file=sys.stderr)
+        sys.exit(1)
 
     try:
         input_data = parse_input(args.input)
     except ValueError as e:
-        print(f"Error: {e}", file=sys.stderr); sys.exit(1)
+        print(f"Error: Invalid input format - {e}", file=sys.stderr)
+        sys.exit(1)
 
     t = config.get("thresholds", {})
     thresholds = Thresholds(
@@ -139,6 +191,13 @@ def main():
 
     try:
         report = run_diagnosis(input_data, olt_config, thresholds)
+    except ValueError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+    except Exception as e:
+        logger.exception("Diagnosis failed")
+        print(f"Error: Diagnosis failed - {e}", file=sys.stderr)
+        sys.exit(1)
     finally:
         close_all()
 
@@ -148,8 +207,12 @@ def main():
         print(report.to_text())
 
     if not args.no_save:
-        filepath = save_text_report(report, config.get("report", {}).get("reports_dir", "data/reports"))
-        print(f"\n[Report saved: {filepath}]")
+        try:
+            filepath = save_text_report(report, config.get("report", {}).get("reports_dir", "data/reports"))
+            print(f"\n[Report saved: {filepath}]")
+        except Exception as e:
+            logger.error(f"Failed to save report: {e}")
+            print(f"\n[Warning: Failed to save report: {e}]", file=sys.stderr)
 
 
 if __name__ == "__main__":

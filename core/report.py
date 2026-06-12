@@ -1,8 +1,11 @@
 """Diagnosis Problem and Report models."""
 
+import logging
 from dataclasses import dataclass, field
 from datetime import datetime
 from core.models import OntMetrics
+
+logger = logging.getLogger(__name__)
 
 
 class DiagnosisProblem:
@@ -20,7 +23,7 @@ class DiagnosisProblem:
 
     def __str__(self):
         icon = {"critical": "!!!", "warning": "(!)", "info": "(i)"}.get(self.severity, "")
-        return f"{icon} {self.description}\n     → {self.recommendation}"
+        return f"{icon} {self.description}\n     -> {self.recommendation}"
 
     def to_dict(self):
         return {

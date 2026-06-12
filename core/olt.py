@@ -5,8 +5,11 @@ Thread-safe via asyncio loop per instance.
 """
 
 import asyncio
+import logging
 import re
 from typing import Optional, Dict
+
+logger = logging.getLogger(__name__)
 
 
 MORE_PROMPT = "---- More ( Press 'Q' to break ) ----"
@@ -51,15 +54,25 @@ class OltConnection:
     def connect(self):
         if self._connected:
             return
-        self._loop.run_until_complete(self._connect())
-        self._connected = True
+        try:
+            self._loop.run_until_complete(self._connect())
+            self._connected = True
+        except Exception as e:
+            logger.error(f"Failed to connect to {self.host}:{self.port}: {e}")
+            # Clean up partial connection
+            if self._writer:
+                try:
+                    self._writer.close()
+                except Exception:
+                    pass
+            raise
 
     def disconnect(self):
         if self._writer:
             try:
                 self._writer.close()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"Error closing writer for {self.host}:{self.port}: {e}")
         self._writer = None
         self._reader = None
         self._connected = False
@@ -154,6 +167,13 @@ class OltConnection:
         self._loop.run_until_complete(self._drain(1.5))
 
     def collect_ont(self, frame, slot, port, ont_id):
+        """Collect ONT data with parameter validation."""
+        # Validate parameters
+        for param_name, param_value in [("frame", frame), ("slot", slot), 
+                                         ("port", port), ("ont_id", ont_id)]:
+            if not re.fullmatch(r'\d+', param_value):
+                raise ValueError(f"Invalid {param_name}: {param_value}")
+        
         results = {}
         results["ont_info"] = self.send_command(
             f"display ont info {frame} {slot} {port} {ont_id}", max_more=0

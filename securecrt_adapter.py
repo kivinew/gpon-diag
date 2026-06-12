@@ -9,6 +9,7 @@ Usage in SecureCRT:
 import os
 import sys
 
+
 # Add script directory to path
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPT_DIR)
@@ -31,6 +32,14 @@ def inject_crt(crt_obj):
     import core.collector as _c
     # Not needed for new architecture, but kept for compat
     pass
+
+
+def sanitize_ont_param(value: str) -> str:
+    """Validate ONT parameter contains only digits."""
+    import re
+    if not re.fullmatch(r'\d+', value):
+        raise ValueError(f"Invalid ONT parameter '{value}': must contain only digits")
+    return value
 
 
 def run_from_securecrt(crt):
@@ -93,19 +102,43 @@ def run_from_securecrt(crt):
         cpu_temp_crit=t.get("cpu_temp_crit_c", 85),
         cpu_usage_warn=t.get("cpu_usage_warn_pct", 80),
         memory_usage_warn=t.get("memory_usage_warn_pct", 85),
-        distance_warn=t.get("distance_warn_m", 5000),
-        distance_crit=t.get("distance_crit_m", 10000),
+        distance_warn=t.get("distance_warn_m", 18000),
+        distance_crit=t.get("distance_crit_m", 20000),
         bad_versions=t.get("bad_versions", []),
         no_ping_models=t.get("no_ping_models", []),
     )
+
+    def _olt_secret_key(olt_name: str) -> str:
+        # OLT-17.232 -> 17_232
+        return ''.join(ch if ch.isalnum() else '_' for ch in olt_name).replace('__', '_').strip('_')
+
+    def _load_olt_credentials(olt_config_: dict):
+        olt_name = olt_config_.get('name', '')
+        key = _olt_secret_key(olt_name) if olt_name else ''
+        if key:
+            u = os.getenv(f"GPON_OLT_{key}_USERNAME", '')
+            p = os.getenv(f"GPON_OLT_{key}_PASSWORD", '')
+            if u and p:
+                return u, p
+
+        host = olt_config_.get('host', '')
+        host_key = ''.join(ch if ch.isalnum() else '_' for ch in host).replace('__', '_').strip('_')
+        u = os.getenv(f"GPON_OLT_{host_key}_USERNAME", '')
+        p = os.getenv(f"GPON_OLT_{host_key}_PASSWORD", '')
+        return u, p
 
     # Collect data using SecureCRT's existing connection
     from core.collector import TelnetCollector
 
     host = olt_config.get("host", "")
     port = olt_config.get("port", 23)
-    username = olt_config.get("username", "")
-    password = olt_config.get("password", "")
+    username, password = _load_olt_credentials(olt_config)
+    if not username or not password:
+        crt.Dialog.MessageBox(
+            f"Нет креденшелий для OLT '{olt_config.get('name', host)}'.\n"
+            f"Установите env: GPON_OLT_<OLT_NAME>_USERNAME/PASSWORD"
+        )
+        return
 
     try:
         with TelnetCollector(host, port, username, password) as coll:
@@ -128,8 +161,16 @@ def run_from_securecrt(crt):
             port_num = input_data["port"]
             ont_id = input_data["ont_id"]
 
-            # Collect
-            raw_data = coll.collect_ont(frame, slot, port_num, ont_id)
+            # Collect with sanitized parameters
+            raw_data = coll.collect_ont(
+                sanitize_ont_param(frame),
+                sanitize_ont_param(slot),
+                sanitize_ont_param(port_num),
+                sanitize_ont_param(ont_id),
+            )
+    except ValueError as e:
+        crt.Dialog.MessageBox(f"Ошибка валидации параметров: {e}")
+        return
     except Exception as e:
         crt.Dialog.MessageBox(f"Ошибка подключения к OLT:\n{e}")
         return

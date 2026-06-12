@@ -24,3 +24,14 @@ data/reports/
 data/incidents/
 *.log
 uv.lock
+
+# Secrets / local env
+.env
+.env.*
+!env.example
+secrets.yaml
+secrets.*
+*.pem
+*.key
+credentials.json
+
