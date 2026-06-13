@@ -6,53 +6,57 @@ from core.models import OntMetrics, LanPort, MacDevice
 
 logger = logging.getLogger(__name__)
 
-
 PATTERNS = {
-    "status":           r"Run state\s*:\s*(.+)",
-    "serial":           r"(?i)SN\s*:\s*([\da-fA-F]{16})",
-    "description":      r"Description\s*:\s*(.+)",
-    "distance":         r"ONT distance\(m\)\s*:\s*(\d+)",
-    "distance_last":    r"ONT last distance\(m\)\s*:\s*(\d+)",
-    "online_duration":  r"ONT online duration\s*:\s*(.+)",
-    "uptime":           r"Last up time\s*:\s*([\d-]+\s[\d:+-]+)",
-    "downtime":         r"Last down time\s*:\s*([\d-]+\s[\d:+-]+)",
-    "dying_gasp_time":  r"Last dying gasp time\s*:\s*([\d-]+\s[\d:+-]+)",
-    "downcause":        r"Last down cause\s*:\s*(\S+)",
-    "match_state":      r"Match state\s*:\s*(.+)",
-    "config_state":     r"Config state\s*:\s*(.+)",
-    "power_reduction":  r"Power reduction status\s*:\s*(.+)",
-    "service_profile":  r"Service profile name\s*:\s*(.+)",
-    "line_profile":     r"Line profile name\s*:\s*(.+)",
-    "eth_port_count":   r"ETH\s+(\d+)\s+\d+",
-    "gem_index":        r"<Gem Index\s+(\d+)>",
-    "gem_vlan":         r"Mapping VLAN.*\n.*\n\s+\d+\s+(\d+)",
-    "ont_model":        r"ONT Type\s*:\s*(.+)",
-    "ont_model_alt":    r"Equipment-ID\s*:\s*(\w+)",
-    "soft_version":     r"Main Software Version\s*:\s*(\S+)",
-    "ont_rx_power":     r"Rx\s+optical power\(dBm\)\s*:\s*(-?[\d.]+)",
-    "olt_rx_power":     r"OLT Rx ONT optical power\(dBm\)\s*:\s*(-?[\d.]+)",
-    "ont_tx_power":     r"Tx optical power\(dBm\)\s*:\s*(-?[\d.]+)",
-    "laser_bias":       r"Laser bias current\(mA\)\s*:\s*(\d+)",
-    "ont_temperature":  r"Temperature\(C\)\s*:\s*(-?\d+)",
-    "supply_voltage":   r"Voltage\(V\)\s*:\s*([\d.]+)",
-    "catv_rx_power":    r"CATV Rx optical power\(dBm\)\s*:\s*(-?[\d.]+)",
-    "module_subtype":   r"Module sub-type\s*:\s*(.+)",
-    "vendor_pn":        r"Vendor PN\s*:\s*(.+)",
-    "upstream_errors":  r"Upstream frame BIP error count\s*:\s*(\d+)",
-    "downstream_errors":r"Downstream frame BIP error count\s*:\s*(\d+)",
-    "lan_ports":        r"(\d+)\s+(\d+)\s+(GE|FE)\s+(\d+|-)+\s+(full|half|-)\s+(up|down)",
-    "mac_entry":        r"(ETH|WLAN)\s+(\d+)\s+([\da-fA-F]{4}-[\da-fA-F]{4}-[\da-fA-F]{4})",
-    "ip_output":        r"IP address\s*:\s*(\d+\.\d+\.\d+\.\d+)",
-    "memory_usage":     r"Memory utilization[^:]*:\s*(\d+)",
-    "cpu_temp":         r"CPU temperature[^:]*:\s*(\d+)",
-    "cpu_usage":        r"CPU utilization[^:]*:\s*(\d+)",
+    "status":           r"Run state\s*: *(.+)",
+    "serial":           r"(?i)SN\s*: *([\\da-fA-F]{16})",
+    "description":      r"Description\s*: *(.+)",
+    "distance":         r"ONT distance\\(m\)\s*: *(\d+)",
+    "distance_last":    r"ONT last distance\\(m\)\s*: *(\d+)",
+    "online_duration":  r"ONT online duration\s*: *(.+)",
+    "uptime":           r"Last up time\s*: *([\\d-]+\\s[\\d:+-]+)",
+    "downtime":         r"Last down time\s*: *([\\d-]+\\s[\\d:+-]+)",
+    "dying_gasp_time":  r"Last dying gasp time\s*: *([\\d-]+\\s[\\d:+-]+)",
+    "downcause":        r"Last down cause\s*: *(\\S+)",
+    "match_state":      r"Match state\s*: *(.+)",
+    "config_state":     r"Config state\s*: *(.+)",
+    "power_reduction":  r"Power reduction status\s*: *(.+)",
+    "service_profile":  r"Service profile name\s*: *(.+)",
+    "line_profile":     r"Line profile name\s*: *(.+)",
+    "eth_port_count":   r"ETH\s+(\\d+)\s+\\d+",
+    "gem_index":        r"<Gem Index\\s+(\\d+)>",
+    "gem_vlan":         r"Mapping VLAN.*\\n.*\\n\\s+\\d+\\s+(\\d+)",
+    "ont_model":        r"ONT Type\s*: *(.+)",
+    "ont_model_alt":    r"Equipment-ID\s*: *(\\w+)",
+    "soft_version":     r"Main Software Version\s*: *(\\S+)",
+    "ont_rx_power":     r"Rx\\s+optical power\\(dBm\\)\s*: *(-?[\\d.]+)",
+    "olt_rx_power":     r"OLT Rx ONT optical power\\(dBm\\)\s*: *(-?[\\d.]+)",
+    "ont_tx_power":     r"Tx optical power\\(dBm\\)\s*: *(-?[\\d.]+)",
+    "laser_bias":       r"Laser bias current\\(mA\\)\s*: *(\\d+)",
+    "ont_temperature":  r"Temperature\\(C\\)\s*: *(-?\\d+)",
+    "supply_voltage":   r"Voltage\\(V\\)\s*: *([\\d.]+)",
+    "catv_rx_power":    r"CATV Rx optical power\\(dBm\\)\s*: *(-?[\\d.]+)",
+    "module_subtype":   r"Module sub-type\s*: *(.+)",
+    "vendor_pn":        r"Vendor PN\s*: *(.+)",
+    "upstream_errors":  r"Upstream frame BIP error count\s*: *(\\d+)",
+    "downstream_errors":r"Downstream frame BIP error count\s*: *(\\d+)",
+    "lan_ports":        r"(\\d+)\\s+(\\d+)\\s+(GE|FE)\\s+(\\d+|-)+\\s+(full|half|-)\\s+(up|down)",
+    "mac_entry":        r"(ETH|WLAN)\\s+(\\d+)\\s+([\\da-fA-F]{4}-[\\da-fA-F]{4}-[\\da-fA-F]{4})",
+    "ip_output":        r"IP address\s*: *(\\d+\\.\\d+\\.\\d+\\.\\d+)",
+    "memory_usage":     r"Memory utilization[^:]*: *(\\d+)",
+    "cpu_temp":         r"CPU temperature[^:]*: *(\\d+)",
+    "cpu_usage":        r"CPU utilization[^:]*: *(\\d+)",
+    # Ethernet errors
+    "eth_fcs":          r"Received FCS error frames\s*: *(\\d+)",
+    "eth_received_bad_bytes": r"Received bad bytes\s*: *(\\d+)",
+    "eth_sent_bad_bytes": r"Sent bad bytes\s*: *(\\d+)",
+    # Register info
+    "register_status":  r"Status\s*: *(.+)",
+    "register_age":     r"Age\\(s\\)\s*: *(\\d+)",
 }
-
 
 def _search(text, pattern):
     m = re.search(pattern, text)
     return m.group(1).strip() if m else None
-
 
 def _search_int(text, pattern):
     val = _search(text, pattern)
@@ -61,14 +65,12 @@ def _search_int(text, pattern):
     except (ValueError, TypeError):
         return 0
 
-
 def _search_float(text, pattern):
     val = _search(text, pattern)
     try:
         return float(val) if val is not None else 999.0
     except (ValueError, TypeError):
         return 999.0
-
 
 def parse_ont_info(raw: str, m: OntMetrics) -> None:
     m.status = _search(raw, PATTERNS["status"]) or ""
@@ -91,16 +93,16 @@ def parse_ont_info(raw: str, m: OntMetrics) -> None:
     m.service_profile = _search(raw, PATTERNS["service_profile"]) or ""
     m.line_profile = _search(raw, PATTERNS["line_profile"]) or ""
     # ETH port count from Port-type / Port-number table
-    port_section = re.search(r"Port-type\s+Port-number.*?ETH\s+(\d+)\s+", raw, re.DOTALL)
+    port_section = re.search(r"Port-type\\s+Port-number.*?ETH\\s+(\\d+)\\s+", raw, re.DOTALL)
     m.eth_port_count = int(port_section.group(1)) if port_section else 0
     # GEM VLAN mapping
     m.gem_vlans = {}
-    gem_blocks = re.split(r"<Gem Index\s+(\d+)>", raw)
+    gem_blocks = re.split(r"<Gem Index\\s+(\\d+)>", raw)
     for i in range(1, len(gem_blocks), 2):
         gem_idx = gem_blocks[i]
         block = gem_blocks[i + 1] if i + 1 < len(gem_blocks) else ""
         # Find first Mapping VLAN value in this block
-        vlan_m = re.search(r"Mapping VLAN[\s\S]*?\n\s+\d+\s+(\d+)", block)
+        vlan_m = re.search(r"Mapping VLAN[\\s\\S]*?\\n\\s+\\d+\\s+(\\d+)", block)
         if vlan_m:
             m.gem_vlans[gem_idx] = vlan_m.group(1)
     mem = _search(raw, PATTERNS["memory_usage"])
@@ -111,14 +113,12 @@ def parse_ont_info(raw: str, m: OntMetrics) -> None:
     m.cpu_usage = int(cpu_u) if cpu_u else -1
     m.online_duration = _search(raw, PATTERNS["online_duration"]) or ""
 
-
 def parse_ont_version(raw: str, m: OntMetrics) -> None:
     model = _search(raw, PATTERNS["ont_model"])
     if not model:
         model = _search(raw, PATTERNS["ont_model_alt"])
     m.model = model or ""
     m.version = _search(raw, PATTERNS["soft_version"]) or ""
-
 
 def parse_optical_info(raw: str, m: OntMetrics) -> None:
     m.ont_rx_power = _search_float(raw, PATTERNS["ont_rx_power"])
@@ -130,11 +130,9 @@ def parse_optical_info(raw: str, m: OntMetrics) -> None:
     m.module_subtype = _search(raw, PATTERNS["module_subtype"]) or ""
     m.vendor_pn = _search(raw, PATTERNS["vendor_pn"]) or ""
 
-
 def parse_line_quality(raw: str, m: OntMetrics) -> None:
     m.upstream_errors = _search_int(raw, PATTERNS["upstream_errors"])
     m.downstream_errors = _search_int(raw, PATTERNS["downstream_errors"])
-
 
 def parse_lan_ports(raw: str, m: OntMetrics) -> None:
     m.lan_ports = []
@@ -144,7 +142,6 @@ def parse_lan_ports(raw: str, m: OntMetrics) -> None:
             speed=match.group(4), duplex=match.group(5), link_state=match.group(6),
         ))
 
-
 def parse_mac_addresses(raw: str, m: OntMetrics) -> None:
     m.mac_devices = []
     for match in re.finditer(PATTERNS["mac_entry"], raw):
@@ -152,16 +149,14 @@ def parse_mac_addresses(raw: str, m: OntMetrics) -> None:
             port_type=match.group(1), port_number=match.group(2), mac=match.group(3),
         ))
 
-
 def parse_ipconfig(raw: str, m: OntMetrics) -> None:
     m.ip_address = _search(raw, PATTERNS["ip_output"]) or ""
-
 
 def parse_wan_info(raw: str, m: OntMetrics) -> None:
     """Parse 'display ont wan-info' output. Extracts WAN connections."""
     m.wan_connections = []
     # Split by Index sections
-    sections = re.split(r'Index\s*:\s*(\d+)', raw)
+    sections = re.split(r'Index\\s*:\\s*(\\d+)', raw)
     for i in range(1, len(sections), 2):
         if i + 1 < len(sections):
             idx = sections[i]
@@ -170,11 +165,10 @@ def parse_wan_info(raw: str, m: OntMetrics) -> None:
             for field in ["Service type", "Connection type", "IPv4 Connection status",
                           "IPv4 access type", "IPv4 address", "Subnet mask",
                           "Default gateway", "Manage VLAN", "Manage priority"]:
-                val = _search(block, rf"{field}\s*:\s*(.+)")
+                val = _search(block, rf"{field}\\s*:\\s*(.+)")
                 if val:
                     conn[field.lower().replace(" ", "_")] = val
             m.wan_connections.append(conn)
-
 
 def parse_lan_ports_detail(raw: str, m: OntMetrics) -> None:
     """Parse 'display ont port state' output with speed/duplex."""
@@ -184,3 +178,22 @@ def parse_lan_ports_detail(raw: str, m: OntMetrics) -> None:
             lan_id=match.group(2), port_type=match.group(3),
             speed=match.group(4), duplex=match.group(5), link_state=match.group(6),
         ))
+
+def parse_eth_errors(raw: str, m: OntMetrics, lan_id: str) -> None:
+    """Parse 'display statistics ont-eth' output for a specific LAN port."""
+    if lan_id not in m.eth_errors:
+        m.eth_errors[lan_id] = {}
+    fcs = _search_int(raw, PATTERNS["eth_fcs"])
+    rx_bad = _search_int(raw, PATTERNS["eth_received_bad_bytes"])
+    tx_bad = _search_int(raw, PATTERNS["eth_sent_bad_bytes"])
+    if fcs is not None:
+        m.eth_errors[lan_id]["fcs"] = fcs
+    if rx_bad is not None:
+        m.eth_errors[lan_id]["received_bad_bytes"] = rx_bad
+    if tx_bad is not None:
+        m.eth_errors[lan_id]["sent_bad_bytes"] = tx_bad
+
+def parse_register_info(raw: str, m: OntMetrics) -> None:
+    """Parse 'display ont register-info' output."""
+    m.register_status = _search(raw, PATTERNS["register_status"]) or ""
+    m.register_age = _search_int(raw, PATTERNS["register_age"])

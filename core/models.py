@@ -1,1 +1,82 @@
-\"\"\"Data models for GPON diagnostic framework.\"\"\n\nfrom dataclasses import dataclass, field\nfrom datetime import datetime\n\n\n@dataclass\nclass LanPort:\n    lan_id: str\n    port_type: str\n    speed: str\n    duplex: str\n    link_state: str\n\n\n@dataclass\nclass MacDevice:\n    port_type: str\n    port_number: str\n    mac: str\n    vendor: str = \"n/a\"\n\n\n@dataclass\nclass OntMetrics:\n    address: str = \"\"\n    frame: str = \"\"\n    slot: str = \"\"\n    port: str = \"\"\n    ont_id: str = \"\"\n    status: str = \"\"\n    serial: str = \"\"\n    description: str = \"\"\n    model: str = \"\"\n    version: str = \"\"\n    distance_m: int = -1\n    ont_rx_power: float = 999.0\n    olt_rx_power: float = 999.0\n    ont_tx_power: float = 999.0\n    laser_bias_current: int = -1\n    ont_temperature: int = -999\n    supply_voltage: float = -1.0\n    module_subtype: str = \"\"\n    vendor_pn: str = \"\"\n    upstream_errors: int = 0\n    downstream_errors: int = 0\n    eth_errors: dict = field(default_factory=dict)   # {lan_id: {fcs: int, received_bad_bytes: int, sent_bad_bytes: int}}\n    lan_ports: list = field(default_factory=list)\n    mac_devices: list = field(default_factory=list)\n    ip_address: str = \"\"\n    cpu_usage: int = -1\n    memory_usage: int = -1\n    cpu_temp: int = -999\n    last_down_cause: str = \"\"\n    last_up_time: str = \"\"\n    last_down_time: str = \"\"\n    last_dying_gasp_time: str = \"\"\n    fetch_timestamp: str = \"\"\n    online_duration: str = \"\"\n    match_state: str = \"\"\n    config_state: str = \"\"\n    power_reduction: str = \"\"\n    service_profile: str = \"\"\n    line_profile: str = \"\"\n    eth_port_count: int = 0\n    gem_vlans: dict = field(default_factory=dict)   # {gem_index: vlan}\n    wan_connections: list = field(default_factory=list)\n    troubleshooting: str = \"\"\n\n    @property\n    def is_online(self) -> bool:\n        return self.status.lower() in (\"online\", \"working\")\n\n    @property\n    def total_bip_errors(self) -> int:\n        return self.upstream_errors + self.downstream_errors\n\n    @property\n    def has_lan_activity(self) -> bool:\n        return any(p.link_state == \"up\" for p in self.lan_ports)\n\n\n@dataclass\nclass DiagnosisProblem:\n    SEVERITY_ORDER = {\"critical\": 0, \"warning\": 1, \"info\": 2}\n\n    def __init__(self, severity, category, description, recommendation):\n        self.severity = severity\n        self.category = category\n        self.description = description\n        self.recommendation = recommendation\n\n    @property\n    def sort_key(self):\n        return self.SEVERITY_ORDER.get(self.severity, 9)\n\n    def __str__(self):\n        icon = {\"critical\": \"!!!\", \"warning\": \"(!)\", \"info\": \"(i)\"}.get(self.severity, \"\")\n        return f\"{icon} {self.description}\\n     → {self.recommendation}\"\n\n    def to_dict(self):\n        return {\n            \"severity\": self.severity,\n            \"category\": self.category,\n            \"description\": self.description,\n            \"recommendation\": self.recommendation,\n        }\n\n\n@dataclass\nclass DiagnosisReport:\n    timestamp: str\n    olt_name: str\n    metrics: OntMetrics\n    problems: list\n    is_offline: bool = False\n\n    @property\n    def has_problems(self) -> bool:\n        return len(self.problems) > 0\n\n    def to_text(self) -> str:\n        m = self.metrics\n        lines = [\n            f\"OLT: {self.olt_name}\",\n            f\"ONT: {m.address}\",\n            f\"{'Терминал доступен.' if m.is_online else 'Терминал НЕДОСТУПЕН.'}\",\n        ]\n\n        if not m.is_online:\n            if m.last_down_time:\n                lines.append(f\"Отключён: {m.last_down_time}\")\n            if m.last_dying_gasp_time:\n                lines.append(f\"Dying Gasp: {m.last_dying_gasp_time}\")\n            if m.last_up_time:\n                lines.append(f\"Последнее включение: {m.last_up_time}\")\n            if m.distance_m >= 0:\n                lines.append(f\"Расстояние: {m.distance_m} м\")\n            if m.last_down_cause:\n                lines.append(f\"Причина: {m.last_down_cause}\")\n        else:\n            if m.description:\n                lines.append(f\"Описание: {m.description}\")\n            if m.serial:\n                lines.append(f\"SN: {m.serial}\")\n            if m.model:\n                lines.append(f\"Модель: {m.model}\")\n            if m.version:\n                lines.append(f\"ПО: {m.version}\")\n            if m.distance_m >= 0:\n                lines.append(f\"Расстояние: {m.distance_m} м\")\n            if m.online_duration and m.online_duration != \"-\":\n                lines.append(f\"Аптайм: {m.online_duration}\")\n            if m.match_state:\n                lines.append(f\"Match state: {m.match_state}\")\n            if m.config_state:\n                lines.append(f\"Config state: {m.config_state}\")\n            if m.power_reduction and m.power_reduction != \"-\":\n                lines.append(f\"Power reduction: {m.power_reduction}\")\n            if m.service_profile:\n                lines.append(f\"Service profile: {m.service_profile}\")\n            if m.line_profile:\n                lines.append(f\"Line profile: {m.line_profile}\")\n            if m.eth_port_count:\n                lines.append(f\"ETH портов: {m.eth_port_count}\")\n            if m.gem_vlans:\n                for gem_idx, vlan in sorted(m.gem_vlans.items(), key=lambda x: int(x[0])):\n                    lines.append(f\"GEM {gem_idx}: VLAN {vlan}\")\n            if m.ont_rx_power < 900:\n                lines.append(f\"ONT Rx: {m.ont_rx_power} dBm\")\n            if m.olt_rx_power < 900:\n                lines.append(f\"OLT Rx: {m.olt_rx_power} dBm\")\n            if m.ont_tx_power < 900:\n                lines.append(f\"ONT Tx: {m.ont_tx_power} dBm\")\n            if m.laser_bias_current >= 0:\n                lines.append(f\"Laser bias: {m.laser_bias_current} mA\")\n            if m.ont_temperature > -900:\n                lines.append(f\"Температура: {m.ont_temperature}°C\")\n            if m.supply_voltage >= 0:\n                lines.append(f\"Напряжение: {m.supply_voltage} V\")\n            if m.module_subtype:\n                lines.append(f\"Module class: {m.module_subtype}\")\n            if m.total_bip_errors > 0:\n                lines.append(f\"BIP ошибки: Up={m.upstream_errors}, Down={m.downstream_errors}\")\n            if m.has_lan_activity:\n                for p in m.lan_ports:\n                    if p.link_state == \"up\":\n                        lines.append(f\"LAN{p.lan_id}: {p.port_type} {p.speed} Mbps {p.duplex}\")\n\n            # WAN connections\n            if hasattr(m, 'wan_connections') and m.wan_connections:\n                lines.append(\"\")\n                lines.append(\"WAN-соединения:\")\n                for conn in m.wan_connections:\n                    idx = conn.get('index', '?')\n                    svc = conn.get('service_type', '')\n                    status = conn.get('ipv4_connection_status', '')\n                    ip = conn.get('ipv4_address', '-')\n                    vlan = conn.get('manage_vlan', '')\n                    lines.append(f\"  #{idx} {svc}: {status}, IP={ip}, VLAN={vlan}\")\n\n            # Eth errors\n            if m.eth_errors:\n                lines.append(\"\")\n                lines.append(\"ETH ошибки:\")\n                for lan_id, errs in sorted(m.eth_errors.items(), key=lambda x: int(x[0])):\n                    lines.append(f\"  LAN{lan_id}: FCS={errs.get('fcs', 0)}, Received bad bytes={errs.get('received_bad_bytes', 0)}, Sent bad bytes={errs.get('sent_bad_bytes', 0)}\")\n\n        if self.problems:\n            lines.append(\"\")\n            lines.append(\"=== ПРОБЛЕМЫ ===\")\n            for p in sorted(self.problems, key=lambda x: x.sort_key):\n                lines.append(str(p))\n        else:\n            lines.append(\"\")\n            lines.append(\"Нарушений не выявлено.\")\n\n        return \"\\n\".join(lines)\n\n    def to_dict(self) -> dict:\n        m = self.metrics\n        return {\n            \"timestamp\": self.timestamp,\n            \"olt\": self.olt_name,\n            \"ont\": m.address,\n            \"is_online\": m.is_online,\n            \"status\": m.status,\n            \"serial\": m.serial,\n            \"description\": m.description,\n            \"model\": m.model,\n            \"version\": m.version,\n            \"distance_m\": m.distance_m,\n            \"online_duration\": m.online_duration,\n            \"match_state\": m.match_state,\n            \"config_state\": m.config_state,\n            \"power_reduction\": m.power_reduction,\n            \"service_profile\": m.service_profile,\n            \"line_profile\": m.line_profile,\n            \"eth_port_count\": m.eth_port_count,\n            \"gem_vlans\": m.gem_vlans,\n            \"wan_connections\": m.wan_connections,\n            \"eth_errors\": m.eth_errors,\n            \"last_down_cause\": m.last_down_cause,\n            \"last_up_time\": m.last_up_time,\n            \"last_down_time\": m.last_down_time,\n            \"last_dying_gasp_time\": m.last_dying_gasp_time,\n            \"ont_rx_power\": m.ont_rx_power,\n            \"olt_rx_power\": m.olt_rx_power,\n            \"ont_tx_power\": m.ont_tx_power,\n            \"laser_bias_current\": m.laser_bias_current,\n            \"ont_temperature\": m.ont_temperature,\n            \"supply_voltage\": m.supply_voltage,\n            \"module_subtype\": m.module_subtype,\n            \"vendor_pn\": m.vendor_pn,\n            \"upstream_errors\": m.upstream_errors,\n            \"downstream_errors\": m.downstream_errors,\n            \"lan_ports\": [{\"id\": p.lan_id, \"type\": p.port_type, \"speed\": p.speed, \"duplex\": p.duplex, \"link\": p.link_state} for p in m.lan_ports],\n            \"problems\": [p.to_dict() for p in self.problems],\n        }\n\n\n@dataclass\nclass LanPort:\n    lan_id: str\n    port_type: str\n    speed: str\n    duplex: str\n    link_state: str\n\n\n@dataclass\nclass MacDevice:\n    port_type: str\n    port_number: str\n    mac: str\n    vendor: str = \"n/a\"\n\n\n# Note: Dataclasses defined above; order doesn't matter but we keep them here for completeness.\n# Actually we need to avoid duplicate class definitions. Let's remove the duplicates.\n# We'll keep only one definition each.\n# We'll rewrite the file properly.\n\n# Let's start over: we'll write the file from scratch with correct ordering.\n\n# Actually the above is messy. Let's replace the whole file with a clean version.\n\n# We'll do that in the next step.\n\n
+"""Data models for GPON diagnostic framework."""
+
+from dataclasses import dataclass, field
+from datetime import datetime
+
+
+@dataclass
+class LanPort:
+    lan_id: str
+    port_type: str
+    speed: str
+    duplex: str
+    link_state: str
+
+
+@dataclass
+class MacDevice:
+    port_type: str
+    port_number: str
+    mac: str
+    vendor: str = "n/a"
+
+
+@dataclass
+class OntMetrics:
+    address: str = ""
+    frame: str = ""
+    slot: str = ""
+    port: str = ""
+    ont_id: str = ""
+    status: str = ""
+    serial: str = ""
+    description: str = ""
+    model: str = ""
+    version: str = ""
+    distance_m: int = -1
+    ont_rx_power: float = 999.0
+    olt_rx_power: float = 999.0
+    ont_tx_power: float = 999.0
+    laser_bias_current: int = -1
+    ont_temperature: int = -999
+    supply_voltage: float = -1.0
+    module_subtype: str = ""
+    vendor_pn: str = ""
+    upstream_errors: int = 0
+    downstream_errors: int = 0
+    eth_errors: dict = field(default_factory=dict)   # {lan_id: {fcs: int, received_bad_bytes: int, sent_bad_bytes: int}}
+    lan_ports: list = field(default_factory=list)
+    mac_devices: list = field(default_factory=list)
+    ip_address: str = ""
+    cpu_usage: int = -1
+    memory_usage: int = -1
+    cpu_temp: int = -999
+    last_down_cause: str = ""
+    last_up_time: str = ""
+    last_down_time: str = ""
+    last_dying_gasp_time: str = ""
+    fetch_timestamp: str = ""
+    online_duration: str = ""
+    match_state: str = ""
+    config_state: str = ""
+    power_reduction: str = ""
+    service_profile: str = ""
+    line_profile: str = ""
+    eth_port_count: int = 0
+    gem_vlans: dict = field(default_factory=dict)   # {gem_index: vlan}
+    wan_connections: list = field(default_factory=list)
+    register_status: str = ""
+    register_age: int = -1
+    troubleshooting: str = ""
+
+    @property
+    def is_online(self) -> bool:
+        return self.status.lower() in ("online", "working")
+
+    @property
+    def total_bip_errors(self) -> int:
+        return self.upstream_errors + self.downstream_errors
+
+    @property
+    def has_lan_activity(self) -> bool:
+        return any(p.link_state == "up" for p in self.lan_ports)
