@@ -7,25 +7,24 @@ import logging
 import os
 import sys
 import re
+import yaml
 from datetime import datetime
 
-logging.basicConfig(level=logging.WARNING, format='%(levelname)s: %(message)s')
-logger = logging.getLogger(__name__)
-
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
-import yaml
 from core.models import OntMetrics, LanPort
 from core.parser import (
     parse_wan_info,
     parse_ont_info, parse_ont_version, parse_optical_info,
     parse_line_quality, parse_lan_ports, parse_mac_addresses, parse_ipconfig,
+    parse_eth_errors, parse_register_info,
 )
 from core.engine import create_extended_engine
 from core.thresholds import Thresholds
 from core.report import DiagnosisReport
 from core.reporter import save_text_report
 from core.olt import get_olt_connection, close_all
+
+logging.basicConfig(level=logging.WARNING, format='%(levelname)s: %(message)s')
+logger = logging.getLogger(__name__)
 
 
 def load_config(path="config.yaml"):
@@ -46,12 +45,12 @@ def parse_input(buffer):
     buffer = buffer.strip()
     if not buffer:
         raise ValueError("Empty input")
-    if re.fullmatch(r"(?i)(48575443|hwtc)[\da-f]{8}", buffer):
+    if re.fullmatch(r"(?i)(48575443|hwtc)[\\da-f]{8}", buffer):
         return {"type": "serial", "value": buffer.upper()}
     tokens = buffer.replace("/", " ").split()
     if len(tokens) == 4 and all(t.isdigit() for t in tokens):
         return {"type": "address", "frame": tokens[0], "slot": tokens[1], "port": tokens[2], "ont_id": tokens[3]}
-    if re.match(r"^(fl_|kes)?\d{5,16}$", buffer):
+    if re.match(r"^(fl_|kes)?\\d{5,16}$", buffer):
         return {"type": "description", "value": buffer}
     raise ValueError(f"Cannot recognize: '{buffer}'")
 
@@ -66,16 +65,16 @@ def _load_olt_credentials(olt_config: dict):
     olt_name = olt_config.get('name', '')
     key = _olt_secret_key(olt_name) if olt_name else ''
     if key:
-        username = os.getenv(f"GPON_OLT_{key}_USERNAME", '')
-        password = os.getenv(f"GPON_OLT_{key}_PASSWORD", '')
+        username = os.getenv(f'GPON_OLT_{key}_USERNAME', '')
+        password = os.getenv(f'GPON_OLT_{key}_PASSWORD', '')
         if username and password:
             return username, password
 
     # Fallback: try by host
     host = olt_config.get('host', '')
     host_key = ''.join(ch if ch.isalnum() else '_' for ch in host).replace('__', '_').strip('_')
-    username = os.getenv(f"GPON_OLT_{host_key}_USERNAME", '')
-    password = os.getenv(f"GPON_OLT_{host_key}_PASSWORD", '')
+    username = os.getenv(f'GPON_OLT_{host_key}_USERNAME', '')
+    password = os.getenv(f'GPON_OLT_{host_key}_PASSWORD', '')
     return username, password
 
 
@@ -90,8 +89,8 @@ def run_diagnosis(input_data, olt_config, thresholds):
         )
         sys.exit(2)
 
-    # Get singleton OLT connection
-    olt = get_olt_connection(host, port, username, password)
+    # Get singleton OLT connection with increased timeout
+    olt = get_olt_connection(host, port, username, password, 30)
     olt.connect()
 
     # Resolve ONT location if needed
@@ -130,6 +129,16 @@ def run_diagnosis(input_data, olt_config, thresholds):
     if "ipconfig" in raw_data: parse_ipconfig(raw_data["ipconfig"], metrics)
     if "wan_info" in raw_data: parse_wan_info(raw_data["wan_info"], metrics)
 
+    # Parse eth errors for each LAN port (if present)
+    for lan_id in ["1", "2", "3", "4"]:
+        key = f"eth_errors_raw_{lan_id}"
+        if key in raw_data:
+            parse_eth_errors(raw_data[key], metrics, lan_id)
+
+    # Parse register info
+    if "register_info" in raw_data:
+        parse_register_info(raw_data["register_info"], metrics)
+
     metrics.fetch_timestamp = datetime.now().isoformat()
 
     engine = create_extended_engine(thresholds)
@@ -159,9 +168,11 @@ def main():
     olt_config = None
     for olt in config.get("olts", []):
         if args.olt and olt.get("name") == args.olt:
-            olt_config = olt; break
+            olt_config = olt
+            break
         if not args.olt:
-            olt_config = olt; break
+            olt_config = olt
+            break
     if not olt_config:
         print("Error: OLT not found. Use --olt to specify OLT name.", file=sys.stderr)
         sys.exit(1)
@@ -180,10 +191,10 @@ def main():
         olt_rx_power_crit=t.get("olt_rx_power_crit_dbm", -35.0),
         bip_error_warn=t.get("bip_error_warn", 10000),
         bip_error_crit=t.get("bip_error_crit", 100000),
-        cpu_temp_warn=t.get("cpu_temp_warn_c", 75),
-        cpu_temp_crit=t.get("cpu_temp_crit_c", 85),
         cpu_usage_warn=t.get("cpu_usage_warn_pct", 80),
         memory_usage_warn=t.get("memory_usage_warn_pct", 85),
+        cpu_temp_warn=t.get("cpu_temp_warn_c", 75),
+        cpu_temp_crit=t.get("cpu_temp_crit_c", 85),
         distance_warn=t.get("distance_warn_m", 15000),
         distance_crit=t.get("distance_crit_m", 20000),
         bad_versions=t.get("bad_versions", []),

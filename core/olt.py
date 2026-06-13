@@ -11,7 +11,6 @@ from typing import Optional, Dict
 
 logger = logging.getLogger(__name__)
 
-
 MORE_PROMPT = "---- More ( Press 'Q' to break ) ----"
 
 # Global registry of OLT connections
@@ -38,7 +37,7 @@ def close_all():
 class OltConnection:
     """Manages a single telnet connection to one OLT."""
 
-    def __init__(self, host: str, port: int = 23,
+    def __init__(self, host: str = "", port: int = 23,
                  username: str = "", password: str = "",
                  timeout: int = 15):
         self.host = host
@@ -120,6 +119,7 @@ class OltConnection:
         await self._drain(1)
 
     async def _send_cmd(self, command, max_more=0):
+        """Send command and read output with pagination support."""
         self._write(command + "\n")
         output = ""
         more_count = 0
@@ -145,6 +145,7 @@ class OltConnection:
                     self._write("q")
                     break
 
+            # Check for CLI prompt
             lines = output.strip().split("\n")
             last_line = lines[-1].strip() if lines else ""
             if last_line.endswith("#") or (last_line.endswith(">") and "(" in last_line):
@@ -169,17 +170,17 @@ class OltConnection:
     def collect_ont(self, frame, slot, port, ont_id):
         """Collect ONT data with parameter validation."""
         # Validate parameters
-        for param_name, param_value in [("frame", frame), ("slot", slot), 
+        for param_name, param_value in [("frame", frame), ("slot", slot),
                                          ("port", port), ("ont_id", ont_id)]:
             if not re.fullmatch(r'\d+', param_value):
                 raise ValueError(f"Invalid {param_name}: {param_value}")
-        
+
         results = {}
         results["ont_info"] = self.send_command(
             f"display ont info {frame} {slot} {port} {ont_id}", max_more=0
         )
 
-        status_match = re.search(r"Run state\s*:\s*(.+)", results["ont_info"])
+        status_match = re.search(r"Run state\s*: *(.+)", results["ont_info"])
         is_online = status_match and "online" in status_match.group(1).lower()
         if not is_online:
             return results
@@ -191,7 +192,6 @@ class OltConnection:
         # Enter gpon context
         self._gpon_ctx(frame, slot)
 
-
         results["optical_info"] = self.send_command(
             f"display ont optical-info {port} {ont_id}", max_more=-1
         )
@@ -200,6 +200,19 @@ class OltConnection:
         )
         results["lan_ports"] = self.send_command(
             f"display ont port state {port} {ont_id} eth-port all", max_more=-1
+        )
+        # Collect eth errors for each LAN port (assuming max 4 ports)
+        results["eth_errors_raw_1"] = self.send_command(
+            f"display statistics ont-eth {port} {ont_id} ont-port 1", max_more=0
+        )
+        results["eth_errors_raw_2"] = self.send_command(
+            f"display statistics ont-eth {port} {ont_id} ont-port 2", max_more=0
+        )
+        results["eth_errors_raw_3"] = self.send_command(
+            f"display statistics ont-eth {port} {ont_id} ont-port 3", max_more=0
+        )
+        results["eth_errors_raw_4"] = self.send_command(
+            f"display statistics ont-eth {port} {ont_id} ont-port 4", max_more=0
         )
         results["mac_addresses"] = self.send_command(
             f"display mac-address ont {frame}/{slot}/{port} {ont_id}", max_more=-1
@@ -217,6 +230,11 @@ class OltConnection:
             f"display ont ipconfig {port} {ont_id}", max_more=0
         )
 
+        # Register info (can be collected in config mode)
+        results["register_info"] = self.send_command(
+            f"display ont register-info {port} {ont_id}", max_more=-1
+        )
+
         return results
 
     def find_ont_by_sn(self, serial):
@@ -229,8 +247,8 @@ class OltConnection:
 
     @staticmethod
     def _parse_fsp(output):
-        fsp = re.search(r"F/S/P\s*:\s*([\d/]+)", output)
-        oid = re.search(r"ONT-ID\s*:\s*(\d+)", output)
+        fsp = re.search(r"F/S/P\\s*:\\s*([\\d/]+)", output)
+        oid = re.search(r"ONT-ID\\s*:\\s*(\\d+)", output)
         if fsp and oid:
             parts = fsp.group(1).split("/")
             if len(parts) == 3:
