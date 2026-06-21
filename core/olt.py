@@ -1,19 +1,16 @@
-"""OLT connection manager — singleton pattern per OLT host.
+"""OLT connection manager — synchronous socket-based for Huawei MA5608T."""
 
-Ensures only one TelnetCollector exists per OLT host.
-Thread-safe via asyncio loop per instance.
-"""
-
-import asyncio
 import logging
 import re
-from typing import Optional, Dict
+import select
+import socket
+import time
+from typing import Dict, Optional
 
 logger = logging.getLogger(__name__)
 
 MORE_PROMPT = "---- More ( Press 'Q' to break ) ----"
 
-# Global registry of OLT connections
 _olt_registry: Dict[str, 'OltConnection'] = {}
 
 
@@ -34,8 +31,21 @@ def close_all():
     _olt_registry.clear()
 
 
+def _strip_iac(data):
+    """Remove telnet IAC sequences from data."""
+    result = b""
+    i = 0
+    while i < len(data):
+        if data[i] == 255 and i + 2 < len(data):
+            i += 3
+        else:
+            result += bytes([data[i]])
+            i += 1
+    return result
+
+
 class OltConnection:
-    """Manages a single telnet connection to one OLT."""
+    """Manages a single telnet connection to one OLT using synchronous sockets."""
 
     def __init__(self, host: str = "", port: int = 23,
                  username: str = "", password: str = "",
@@ -45,197 +55,244 @@ class OltConnection:
         self.username = username
         self.password = password
         self.timeout = timeout
-        self._reader = None
-        self._writer = None
-        self._loop = asyncio.new_event_loop()
+        self._sock: Optional[socket.socket] = None
         self._connected = False
 
     def connect(self):
         if self._connected:
             return
         try:
-            self._loop.run_until_complete(self._connect())
+            self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self._sock.settimeout(self.timeout)
+            self._sock.connect((self.host, self.port))
+            time.sleep(0.5)
+
+            # Send IAC WILL ECHO WILL SUPPRESS-GA to accept negotiation
+            self._sock.sendall(bytes([255, 251, 1, 255, 251, 3]))
+            time.sleep(0.3)
+
+            # Read banner and username prompt
+            self._read_to_prompt(2)
+
+            # Send username
+            self._write(self.username + "\r")
+            time.sleep(1)
+            self._read_to_prompt(3)
+
+            # Send password
+            self._write(self.password + "\r")
+            time.sleep(2)
+            self._read_to_prompt(2)
+
+            # Enable
+            self._write("enable\r")
+            time.sleep(1)
+            self._read_to_prompt(2)
+
+            # Config
+            self._write("config\r")
+            time.sleep(1)
+            self._read_to_prompt(2)
+
+            # Scroll (two enters for default terminal length)
+            self._write("scroll\r\r")
+            time.sleep(1)
+            self._read_to_prompt(2)
+
             self._connected = True
         except Exception as e:
             logger.error(f"Failed to connect to {self.host}:{self.port}: {e}")
-            # Clean up partial connection
-            if self._writer:
+            if self._sock:
                 try:
-                    self._writer.close()
+                    self._sock.close()
                 except Exception:
                     pass
             raise
 
     def disconnect(self):
-        if self._writer:
+        if self._sock:
             try:
-                self._writer.close()
-            except Exception as e:
-                logger.warning(f"Error closing writer for {self.host}:{self.port}: {e}")
-        self._writer = None
-        self._reader = None
+                self._sock.sendall(b"quit\r")
+                time.sleep(0.3)
+            except Exception:
+                pass
+            self._sock.close()
+            self._sock = None
         self._connected = False
 
-    async def _connect(self):
-        import telnetlib3
-        self._reader, self._writer = await telnetlib3.open_connection(
-            self.host, self.port, encoding="utf-8"
-        )
-        await self._readuntil("name:")
-        self._write(self.username + "\n")
-        await self._readuntil("password:")
-        self._write(self.password + "\n")
-        await self._readuntil(">")
-        await self._cmd("enable")
-        await self._cmd("config")
-        await self._cmd("scroll 256")
+    def __enter__(self):
+        self.connect()
+        return self
+
+    def __exit__(self, *args):
+        self.disconnect()
 
     def _write(self, text):
-        self._writer.write(text)
+        self._sock.sendall(text.encode("utf-8"))
 
-    async def _readuntil(self, marker, timeout=None):
-        if timeout is None:
-            timeout = self.timeout
-        try:
-            result = await asyncio.wait_for(
-                self._reader.readuntil(marker.encode("utf-8")),
-                timeout=timeout
-            )
-            return result.decode("utf-8", errors="ignore") if isinstance(result, bytes) else result
-        except asyncio.TimeoutError:
-            return ""
-
-    async def _drain(self, seconds=1):
-        deadline = asyncio.get_event_loop().time() + seconds
-        while asyncio.get_event_loop().time() < deadline:
-            try:
-                await asyncio.wait_for(self._reader.read(4096), timeout=0.3)
-            except (asyncio.TimeoutError, Exception):
-                pass
-
-    async def _cmd(self, command, max_more=0):
-        self._write(command + "\n")
-        await asyncio.sleep(0.3)
-        await self._drain(1)
-
-    async def _send_cmd(self, command, max_more=0):
-        """Send command and read output with pagination support."""
-        self._write(command + "\n")
-        output = ""
-        more_count = 0
-
-        while True:
-            try:
-                chunk = await asyncio.wait_for(
-                    self._reader.read(8192),
-                    timeout=self.timeout
-                )
-                if isinstance(chunk, bytes):
-                    chunk = chunk.decode("utf-8", errors="ignore")
-                output += chunk
-            except asyncio.TimeoutError:
-                break
-
-            if MORE_PROMPT in output:
-                if max_more == -1 or more_count < max_more:
-                    self._write(" ")
-                    more_count += 1
-                    continue
-                else:
-                    self._write("q")
+    def _read_to_prompt(self, seconds=2):
+        buf = b""
+        deadline = time.time() + seconds
+        while time.time() < deadline:
+            ready = select.select([self._sock], [], [], 0.5)
+            if ready[0]:
+                try:
+                    chunk = self._sock.recv(8192)
+                    if chunk:
+                        buf += _strip_iac(chunk)
+                except socket.timeout:
+                    pass
+            text = buf.decode("utf-8", errors="ignore")
+            lines = text.rstrip().split("\n")
+            if lines:
+                last = lines[-1].strip()
+                if re.match(r'^\S+(?:\([^\n]+\))?[>#]\s*$', last):
                     break
+        return buf.decode("utf-8", errors="ignore")
 
-            # Check for CLI prompt
-            lines = output.strip().split("\n")
-            last_line = lines[-1].strip() if lines else ""
-            if last_line.endswith("#") or (last_line.endswith(">") and "(" in last_line):
-                break
+    def send_command(self, command, max_more=0):
+        self._write(command + "\r")
+        output = self._read_to_prompt(5)
+
+        if MORE_PROMPT in output:
+            if max_more == -1:
+                while MORE_PROMPT in output:
+                    self._write(" \r")
+                    time.sleep(0.3)
+                    output += self._read_to_prompt(2)
+            else:
+                self._write("q\r")
+                time.sleep(0.3)
+                output += self._read_to_prompt(2)
 
         return output
 
-    def send_command(self, command, max_more=0):
-        return self._loop.run_until_complete(self._send_cmd(command, max_more))
-
     def _gpon_ctx(self, frame, slot):
-        """Enter gpon interface context, ensuring clean prompt."""
-        self._write(f"interface gpon {frame}/{slot}\n")
-        # Wait for prompt to stabilize
-        self._loop.run_until_complete(self._drain(1.5))
+        self._write(f"interface gpon {frame}/{slot}\r")
+        time.sleep(1)
+        self._read_to_prompt(3)
 
     def _quit_gpon(self):
-        """Exit gpon interface context."""
-        self._write("quit\n")
-        self._loop.run_until_complete(self._drain(1.5))
+        self._write("quit\r")
+        time.sleep(1)
+        self._read_to_prompt(2)
 
-    def collect_ont(self, frame, slot, port, ont_id):
-        """Collect ONT data with parameter validation."""
-        # Validate parameters
+    def collect_ont(self, frame, slot, port, ont_id, verbose=True):
+        """Collect ONT data with parameter validation.
+
+        Commands are executed in config mode. display ont info works with port/ont_id
+        within GPON context.
+        """
         for param_name, param_value in [("frame", frame), ("slot", slot),
-                                         ("port", port), ("ont_id", ont_id)]:
+                                       ("port", port), ("ont_id", ont_id)]:
             if not re.fullmatch(r'\d+', param_value):
                 raise ValueError(f"Invalid {param_name}: {param_value}")
 
         results = {}
+
+        # Enter gpon context first
+        self._gpon_ctx(frame, slot)
+
+        if verbose: print(f"  ont info...", end=" ", flush=True)
         results["ont_info"] = self.send_command(
-            f"display ont info {frame} {slot} {port} {ont_id}", max_more=0
+            f"display ont info {port} {ont_id}", max_more=0
         )
+        if verbose: print("OK")
 
         status_match = re.search(r"Run state\s*: *(.+)", results["ont_info"])
         is_online = status_match and "online" in status_match.group(1).lower()
         if not is_online:
+            if verbose: print("  ONT offline, пропуск остальных команд")
+            # Still collect register-info for offline ONTs
+            if verbose: print(f"  register-info...", end=" ", flush=True)
+            results["register_info"] = self.send_command(
+                f"display ont register-info {port} {ont_id}", max_more=-1
+            )
+            if verbose: print("OK")
+            self._quit_gpon()
             return results
 
+        if verbose: print(f"  ont version...", end=" ", flush=True)
         results["ont_version"] = self.send_command(
-            f"display ont version {frame} {slot} {port} {ont_id}", max_more=0
+            f"display ont version {port} {ont_id}", max_more=0
         )
+        if verbose: print("OK")
 
-        # Enter gpon context
-        self._gpon_ctx(frame, slot)
-
+        if verbose: print(f"  optical-info...", end=" ", flush=True)
         results["optical_info"] = self.send_command(
             f"display ont optical-info {port} {ont_id}", max_more=-1
         )
+        if verbose: print("OK")
+
+        if verbose: print(f"  line-quality...", end=" ", flush=True)
         results["line_quality"] = self.send_command(
             f"display statistics ont-line-quality {port} {ont_id}", max_more=0
         )
+        if verbose: print("OK")
+
+        if verbose: print(f"  port state...", end=" ", flush=True)
         results["lan_ports"] = self.send_command(
             f"display ont port state {port} {ont_id} eth-port all", max_more=-1
         )
-        # Collect eth errors for each LAN port (assuming max 4 ports)
-        results["eth_errors_raw_1"] = self.send_command(
-            f"display statistics ont-eth {port} {ont_id} ont-port 1", max_more=0
-        )
-        results["eth_errors_raw_2"] = self.send_command(
-            f"display statistics ont-eth {port} {ont_id} ont-port 2", max_more=0
-        )
-        results["eth_errors_raw_3"] = self.send_command(
-            f"display statistics ont-eth {port} {ont_id} ont-port 3", max_more=0
-        )
-        results["eth_errors_raw_4"] = self.send_command(
-            f"display statistics ont-eth {port} {ont_id} ont-port 4", max_more=0
-        )
+        if verbose: print("OK")
+
+        for lan_id in range(1, 5):
+            if verbose: print(f"  eth-errors {lan_id}...", end=" ", flush=True)
+            results[f"eth_errors_raw_{lan_id}"] = self.send_command(
+                f"display statistics ont-eth {port} {ont_id} ont-port {lan_id}", max_more=0
+            )
+            if verbose: print("OK")
+
+        if verbose: print(f"  mac-address...", end=" ", flush=True)
         results["mac_addresses"] = self.send_command(
             f"display mac-address ont {frame}/{slot}/{port} {ont_id}", max_more=-1
         )
+        if verbose: print("OK")
 
-        # WAN info (in gpon context)
+        if verbose: print(f"  wan-info...", end=" ", flush=True)
         results["wan_info"] = self.send_command(
             f"display ont wan-info {port} {ont_id}", max_more=-1
         )
+        if verbose: print("OK")
 
-        # Exit gpon context for ipconfig
-        self._quit_gpon()
-
+        if verbose: print(f"  ipconfig...", end=" ", flush=True)
         results["ipconfig"] = self.send_command(
             f"display ont ipconfig {port} {ont_id}", max_more=0
         )
+        if verbose: print("OK")
 
-        # Register info (can be collected in config mode)
+        if verbose: print(f"  register-info...", end=" ", flush=True)
         results["register_info"] = self.send_command(
             f"display ont register-info {port} {ont_id}", max_more=-1
         )
+        if verbose: print("OK")
+
+        self._quit_gpon()
 
         return results
+
+    def clear_line_quality(self, frame, slot, port, ont_id):
+        self._gpon_ctx(frame, slot)
+        self.send_command(f"clear statistics ont-line-quality {port} {ont_id}", max_more=0)
+        self._quit_gpon()
+
+    def reset_lan_port(self, frame, slot, port, ont_id, lan_id):
+        self._gpon_ctx(frame, slot)
+        self.send_command(f"ont port attribute {port} {ont_id} eth {lan_id} operational-state off", max_more=0)
+        time.sleep(0.5)
+        self.send_command(f"ont port attribute {port} {ont_id} eth {lan_id} operational-state on", max_more=0)
+        self._quit_gpon()
+
+    def clear_eth_errors(self, frame, slot, port, ont_id, lan_id):
+        self._gpon_ctx(frame, slot)
+        self.send_command(f"clear statistics ont-eth {port} {ont_id} ont-port {lan_id}", max_more=0)
+        self._quit_gpon()
+
+    def remote_ping(self, frame, slot, port, ont_id, ip="1.1.1.1"):
+        self._gpon_ctx(frame, slot)
+        output = self.send_command(f"ont remote-ping {port} {ont_id} ip-address {ip}", max_more=0)
+        self._quit_gpon()
+        return output
 
     def find_ont_by_sn(self, serial):
         output = self.send_command(f"display ont info by-sn {serial}", max_more=0)
@@ -247,8 +304,8 @@ class OltConnection:
 
     @staticmethod
     def _parse_fsp(output):
-        fsp = re.search(r"F/S/P\\s*:\\s*([\\d/]+)", output)
-        oid = re.search(r"ONT-ID\\s*:\\s*(\\d+)", output)
+        fsp = re.search(r"F/S/P\s*:\s*([\d/]+)", output)
+        oid = re.search(r"ONT-ID\s*:\s*(\d+)", output)
         if fsp and oid:
             parts = fsp.group(1).split("/")
             if len(parts) == 3:

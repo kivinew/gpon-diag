@@ -83,40 +83,42 @@ $env:GPON_OLT_40_111_PASSWORD="your_password"
 
 ## Использование
 
-### Диагностика по адресу F/S/P/ONT
+### Быстрая диагностика (авто-OLT)
+
+```bash
+uv run diagnose.py 0/1/3/9
+uv run diagnose.py 4857544312E0E379
+uv run diagnose.py fl_12345
+```
+
+### С выбором OLT
 
 ```bash
 uv run diagnose.py 0/1/3/9 --olt "OLT-17.232"
 ```
 
-### Диагностика по серийному номеру
+### С копированием в буфер обмена
 
 ```bash
-uv run diagnose.py 4857544312E0E379 --olt "OLT-17.232"
-```
-
-### Диагностика по описанию
-
-```bash
-uv run diagnose.py fl_12345 --olt "OLT-17.232"
+uv run diagnose.py 0/1/3/9 --clipboard
 ```
 
 ### Вывод в JSON
 
 ```bash
-uv run diagnose.py 0/1/3/9 --olt "OLT-17.232" --json
+uv run diagnose.py 0/1/3/9 --json
 ```
 
 ### Без сохранения отчёта
 
 ```bash
-uv run diagnose.py 0/1/3/9 --olt "OLT-17.232" --no-save
+uv run diagnose.py 0/1/3/9 --no-save
 ```
 
 ### Тестовый запуск (smoke-тесты)
 
 ```bash
-python tests/test_smoke.py
+uv run python -m tests.test_smoke
 ```
 
 ## Конфигурация

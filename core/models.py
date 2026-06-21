@@ -62,12 +62,21 @@ class OntMetrics:
     power_reduction: str = ""
     service_profile: str = ""
     line_profile: str = ""
+    service_profile_id: str = ""
+    line_profile_id: str = ""
     eth_port_count: int = 0
     gem_vlans: dict = field(default_factory=dict)   # {gem_index: vlan}
     wan_connections: list = field(default_factory=list)
     register_status: str = ""
     register_age: int = -1
+    register_down_count: int = 0
+    register_uptime: str = ""
+    register_downtime: str = ""
+    register_all_downtimes: list = field(default_factory=list)
+    register_falls_24h: int = 0
+    register_falls_7d: int = 0
     troubleshooting: str = ""
+    ping_status: str = ""
 
     @property
     def is_online(self) -> bool:

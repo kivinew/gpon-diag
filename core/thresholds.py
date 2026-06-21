@@ -21,3 +21,4 @@ class Thresholds:
     distance_warn: int = 15000
     distance_crit: int = 20000
     bad_versions: list = field(default_factory=list)
+    no_ping_models: list = field(default_factory=list)

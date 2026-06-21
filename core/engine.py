@@ -50,10 +50,14 @@ def rule_offline(metrics, t):
     if metrics.is_online:
         return None
     cause = metrics.last_down_cause.lower()
-    if not cause:
+    if not cause or cause == "-":
         return DiagnosisProblem("critical", "unknown", "ONT offline, cause unknown", "Check fiber, connectors, ONT manually")
-    if "los" in cause or "lofi" in cause:
-        return DiagnosisProblem("critical", "optic", f"Loss of signal: {metrics.last_down_cause}", "Проверить волоконную линию, коннекторы, сплайсы")
+    if "los" in cause or "losi" in cause or "lobi" in cause:
+        return DiagnosisProblem("critical", "optic", f"Loss of signal: {metrics.last_down_cause}", "Проверить оптическую линию — возможно отключение волокна или повреждение кабеля")
+    if "lofi" in cause:
+        return DiagnosisProblem("warning", "optic", f"Low signal: {metrics.last_down_cause}", "Проверить оптическую линию — снижение уровня сигнала")
+    if "wire-down" in cause:
+        return DiagnosisProblem("critical", "optic", f"Wire-down: {metrics.last_down_cause}", "Проверить магистральный кабель — возможна массовая проблема")
     if "dying-gasp" in cause:
         return DiagnosisProblem("critical", "power", f"Power loss: {metrics.last_down_cause}", "Проверить электропитание терминала (роутер/БП абонента)")
     if "loki" in cause:
@@ -65,7 +69,7 @@ def rule_low_ont_rx(metrics, t):
     if not metrics.is_online or metrics.ont_rx_power >= 900:
         return None
     if metrics.ont_rx_power < t.ont_rx_power_crit:
-        return DiagnosisProblem("critical", "optic", f"Критически низкий ONT Rx: {metrics.ont_rx_power} dBm", "Проверить оптическую линию: коннекторы, сплайсы, изгибы волокна")
+        return DiagnosisProblem("critical", "optic", f"Критически низкий ONT Rx: {metrics.ont_rx_power} dBm", "Проверить оптическую линию")
     if metrics.ont_rx_power < t.ont_rx_power_warn:
         return DiagnosisProblem("warning", "optic", f"Низкий ONT Rx: {metrics.ont_rx_power} dBm", "Сократить длину линии или проверить качество соединений")
     return None
@@ -278,12 +282,89 @@ def rule_high_memory(metrics, t):
     return None
 
 
+def rule_no_description(metrics, t):
+    """Check for missing description on online ONTs."""
+    if not metrics.is_online:
+        return None
+    if metrics.description == "ONT_NO_DESCRIPTION":
+        return DiagnosisProblem(
+            "warning", "accounting",
+            "Дескрипшн (лицевой счёт) не установлен",
+            "Установить ЛС абонента и исправить дескрипшен"
+        )
+    return None
+
+
+def rule_frequent_falls(metrics, t):
+    """Check if ONT falls frequently (2+ times within 1 hour)."""
+    if not hasattr(metrics, 'register_all_downtimes') or not metrics.register_all_downtimes:
+        return None
+    import datetime as _dt
+    now = _dt.datetime.now()
+    recent = []
+    for d in metrics.register_all_downtimes:
+        try:
+            dt = _dt.datetime.strptime(d, "%Y-%m-%d %H:%M:%S%z").replace(tzinfo=None)
+            if (now - dt).total_seconds() <= 3600:
+                recent.append(dt)
+        except ValueError:
+            pass
+    if len(recent) >= 2:
+        return DiagnosisProblem(
+            "critical", "stability",
+            f"Частые отключения ONT: {len(recent)} раз за последний час",
+            "Проверить стабильность питания и оптической линии — возможна проблема с кабелем или БП"
+        )
+    return None
+
+
+def rule_eth_port_errors(metrics, t):
+    """Check for errors on ports with active links."""
+    if not metrics.is_online or not metrics.eth_errors:
+        return None
+    problems = []
+    for port in metrics.lan_ports:
+        if port.link_state != "up":
+            continue
+        errs = metrics.eth_errors.get(port.lan_id, {})
+        fcs = errs.get("fcs", 0)
+        rx_bad = errs.get("received_bad_bytes", 0)
+        tx_bad = errs.get("sent_bad_bytes", 0)
+        total = fcs + rx_bad + tx_bad
+        if total > 0:
+            problems.append(DiagnosisProblem(
+                "warning", "ethernet",
+                f"LAN{port.lan_id}: ошибки — FCS={fcs}, RX bad={rx_bad}, TX bad={tx_bad}",
+                f"Проверить кабель Ethernet LAN{port.lan_id}, разъём, порт абонентского устройства"
+            ))
+    return problems if problems else None
+
+
+def rule_long_uptime(metrics, t):
+    """Recommend reboot if uptime > 5 days."""
+    if not metrics.is_online or not metrics.online_duration or metrics.online_duration == "-":
+        return None
+    import re as _re
+    m = _re.search(r"(\d+)\s*day", metrics.online_duration)
+    if m and int(m.group(1)) >= 5:
+        return DiagnosisProblem(
+            "info", "maintenance",
+            f"Длительная работа без перезагрузки: {metrics.online_duration}",
+            "Рекомендуется перезагрузка терминала для обновления состояния"
+        )
+    return None
+
+
 # Extended ruleset including new rules
 EXTENDED_RULES = DEFAULT_RULES + [
     Rule("wan_disconnected", rule_wan_disconnected, "wan"),
     Rule("lan_no_link", rule_lan_no_link, "ethernet"),
     Rule("high_cpu", rule_high_cpu, "hardware"),
     Rule("high_memory", rule_high_memory, "hardware"),
+    Rule("no_description", rule_no_description, "accounting"),
+    Rule("frequent_falls", rule_frequent_falls, "stability"),
+    Rule("eth_port_errors", rule_eth_port_errors, "ethernet"),
+    Rule("long_uptime", rule_long_uptime, "maintenance"),
 ]
 
 
