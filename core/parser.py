@@ -43,7 +43,8 @@ PATTERNS = {
     "upstream_errors":  r"Upstream frame BIP error count\s*: *(\d+)",
     "downstream_errors": r"Downstream frame BIP error count\s*: *(\d+)",
     "lan_ports":        r"(\d+)\s+(\d+)\s+(GE|FE)\s+(\d+|-)\s+(full|half|-)\s+(up|down)",
-    "mac_entry":        r"(ETH|WLAN)\s+(\d+)\s+([\da-fA-F]{4}-[\da-fA-F]{4}-[\da-fA-F]{4})",
+    "mac_entry":        r"(?:(?:ETH|WLAN)\s+)?(\d+)\s+([\da-fA-F]{4}-[\da-fA-F]{4}-[\da-fA-F]{4})",
+    "mac_only":         r"([\da-fA-F]{2}[-][\da-fA-F]{2}[-][\da-fA-F]{2}[-][\da-fA-F]{2}[-][\da-fA-F]{2}[-][\da-fA-F]{2})",
     "ip_output":        r"IP address\s*: *(\d+\.\d+\.\d+\.\d+)",
     "memory_usage":     r"Memory utilization[^:]*: *(\d+)",
     "cpu_temp":         r"CPU temperature[^:]*: *(\d+)",
@@ -149,10 +150,24 @@ def parse_lan_ports(raw: str, m: OntMetrics) -> None:
 
 def parse_mac_addresses(raw: str, m: OntMetrics) -> None:
     m.mac_devices = []
+    seen = set()
     for match in re.finditer(PATTERNS["mac_entry"], raw):
+        mac = match.group(2)
+        if mac.lower() in seen:
+            continue
+        seen.add(mac.lower())
         m.mac_devices.append(MacDevice(
-            port_type=match.group(1), port_number=match.group(2), mac=match.group(3),
+            port_type="ETH", port_number=match.group(1), mac=mac,
         ))
+    if not m.mac_devices:
+        for match in re.finditer(PATTERNS["mac_only"], raw):
+            mac = match.group(1)
+            if mac.lower() in seen:
+                continue
+            seen.add(mac.lower())
+            m.mac_devices.append(MacDevice(
+                port_type="ETH", port_number="?", mac=mac,
+            ))
 
 def parse_ipconfig(raw: str, m: OntMetrics) -> None:
     m.ip_address = _search(raw, PATTERNS["ip_output"]) or ""
@@ -221,7 +236,6 @@ def parse_register_info(raw: str, m: OntMetrics) -> None:
     for d in m.register_all_downtimes:
         try:
             dt = datetime.datetime.strptime(d, "%Y-%m-%d %H:%M:%S%z")
-            # Convert to naive datetime for comparison
             dt_naive = dt.replace(tzinfo=None)
             days_ago = (now - dt_naive).total_seconds() / 86400
             if days_ago <= 1:
@@ -230,3 +244,18 @@ def parse_register_info(raw: str, m: OntMetrics) -> None:
                 m.register_falls_7d += 1
         except ValueError:
             pass
+
+
+def parse_ping_result(raw: str, m: OntMetrics) -> None:
+    transmit = re.search(r"Transmit packets?\s*:\s*(\d+)", raw)
+    receive = re.search(r"Receive(?:d)? packets?\s*:\s*(\d+)", raw)
+    lost = re.search(r"Lost packets?\s*:\s*(\d+)", raw)
+    loss_pct = re.search(r"Loss ratio\s*:\s*(\d+)%", raw)
+    avg_rtt = re.search(r"(?:Average|Round trip time)\s*\(ms\)\s*:\s*(\d+)", raw)
+    m.ping_result = {
+        "transmit": int(transmit.group(1)) if transmit else 0,
+        "receive": int(receive.group(1)) if receive else 0,
+        "lost": int(lost.group(1)) if lost else 0,
+        "loss_pct": int(loss_pct.group(1)) if loss_pct else -1,
+        "avg_rtt": int(avg_rtt.group(1)) if avg_rtt else -1,
+    }

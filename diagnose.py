@@ -28,13 +28,13 @@ from core.models import OntMetrics, LanPort
 from core.parser import (
     parse_ont_info, parse_ont_version, parse_optical_info,
     parse_line_quality, parse_lan_ports, parse_mac_addresses, parse_ipconfig,
-    parse_wan_info, parse_eth_errors, parse_register_info,
+    parse_wan_info, parse_eth_errors, parse_register_info, parse_ping_result,
 )
 from core.engine import create_extended_engine
 from core.thresholds import Thresholds
 from core.report import DiagnosisReport
 from core.reporter import save_text_report
-from core.olt import get_olt_connection, close_all
+from core.olt import get_olt_connection, close_all, OntNotFoundError
 
 logging.basicConfig(level=logging.WARNING, format='%(levelname)s: %(message)s')
 logger = logging.getLogger(__name__)
@@ -131,7 +131,8 @@ def _load_olt_credentials(olt_config: dict):
     return username, password
 
 
-def run_diagnosis(input_data, olt_config, thresholds, allow_actions=True):
+def run_diagnosis(input_data, olt_config, thresholds, allow_actions=True, log=None, ping_target="1.1.1.1"):
+    _log = log or (lambda msg, end=" ", flush=True: print(msg, end=end, flush=flush))
     host = olt_config["host"]
     port = olt_config.get("port", 23)
     username, password = _load_olt_credentials(olt_config)
@@ -142,34 +143,35 @@ def run_diagnosis(input_data, olt_config, thresholds, allow_actions=True):
         )
 
     olt = get_olt_connection(host, port, username, password, 30)
-    print(f"Подключение к головной станции {host}...", end=" ", flush=True)
+    _log(f"Подключение к головной станции {host}...")
     olt.connect()
-    print("OK")
+    _log("OK")
 
     if input_data["type"] == "serial":
-        print(f"Поиск ONT по SN {input_data['value']}...", end=" ", flush=True)
+        _log(f"Поиск ONT по SN {input_data['value']}...")
         loc = olt.find_ont_by_sn(input_data["value"])
         if not loc:
-            print("не найдена")
-            return DiagnosisReport(datetime.now().isoformat(), host, OntMetrics(), [], True)
-        print("OK")
+            _log("не найдена")
+            return DiagnosisReport(datetime.now(TZ_LOCAL).isoformat(), host, OntMetrics(), [], True)
+        _log("OK")
         input_data.update(loc)
     elif input_data["type"] == "description":
-        print(f"Поиск ONT по описанию '{input_data['value']}'...", end=" ", flush=True)
+        _log(f"Поиск ONT по описанию '{input_data['value']}'...")
         loc = olt.find_ont_by_description(input_data["value"])
         if not loc:
-            print("не найдена")
-            return DiagnosisReport(datetime.now().isoformat(), host, OntMetrics(), [], True)
-        print("OK")
+            _log("не найдена")
+            return DiagnosisReport(datetime.now(TZ_LOCAL).isoformat(), host, OntMetrics(), [], True)
+        _log("OK")
         input_data.update(loc)
 
     addr = f"{input_data['frame']}/{input_data['slot']}/{input_data['port']}/{input_data['ont_id']}"
-    print(f"Сбор данных ONT {addr}:")
+    _log(f"Сбор данных ONT {addr}:")
     raw_data = olt.collect_ont(
         sanitize_ont_param(input_data["frame"]),
         sanitize_ont_param(input_data["slot"]),
         sanitize_ont_param(input_data["port"]),
         sanitize_ont_param(input_data["ont_id"]),
+        log=_log,
     )
 
     metrics = OntMetrics()
@@ -198,22 +200,22 @@ def run_diagnosis(input_data, olt_config, thresholds, allow_actions=True):
 
     metrics.fetch_timestamp = datetime.now(TZ_LOCAL).isoformat()
 
-    print("Анализ...", end=" ", flush=True)
+    _log("Анализ...")
     engine = create_extended_engine(thresholds)
     problems = engine.diagnose(metrics)
-    print("OK")
+    _log("OK")
 
     if allow_actions and metrics.is_online:
         if metrics.total_bip_errors > 0:
-            print("Сброс ошибок BIP...", end=" ", flush=True)
+            _log("Сброс ошибок BIP...")
             olt.clear_line_quality(
                 input_data["frame"], input_data["slot"],
                 input_data["port"], input_data["ont_id"]
             )
-            print("OK")
+            _log("OK")
         for port_obj in metrics.lan_ports:
             if port_obj.lan_id and port_obj.link_state == "up":
-                print(f"Сброс LAN{port_obj.lan_id}...", end=" ", flush=True)
+                _log(f"Сброс LAN{port_obj.lan_id}...")
                 olt.reset_lan_port(
                     input_data["frame"], input_data["slot"],
                     input_data["port"], input_data["ont_id"],
@@ -224,17 +226,29 @@ def run_diagnosis(input_data, olt_config, thresholds, allow_actions=True):
                     input_data["port"], input_data["ont_id"],
                     int(port_obj.lan_id)
                 )
-                print("OK")
+                _log("OK")
 
-        # Remote ping for reachable ONTs (skip 310 model)
-        if metrics.is_online and "310" not in metrics.model:
-            print("Remote ping...", end=" ", flush=True)
+    if metrics.is_online and "310" not in metrics.model:
+            _log(f"Remote ping ({ping_target})...")
+            metrics.ping_target = ping_target
             remote_ping_result = olt.remote_ping(
                 input_data["frame"], input_data["slot"],
-                input_data["port"], input_data["ont_id"]
+                input_data["port"], input_data["ont_id"],
+                ip=ping_target
             )
-            metrics.ping_status = "success" if "Success" in remote_ping_result else "failed"
-            print(metrics.ping_status)
+            parse_ping_result(remote_ping_result, metrics)
+            pr = metrics.ping_result
+            if pr.get("transmit", 0) > 0 and pr.get("receive", 0) > 0:
+                metrics.ping_status = "успешно"
+            elif "Failure" in remote_ping_result:
+                metrics.ping_status = "неудачно"
+            elif pr.get("transmit", 0) > 0 and pr.get("lost", 0) > 0:
+                metrics.ping_status = "неудачно"
+            elif pr.get("transmit", 0) > 0:
+                metrics.ping_status = "нет ответа"
+            else:
+                metrics.ping_status = "нет ответа"
+            _log(metrics.ping_status)
 
     return DiagnosisReport(
         datetime.now(TZ_LOCAL).isoformat(), host,
@@ -325,14 +339,19 @@ def main():
         memory_usage_warn=t.get("memory_usage_warn_pct", 85),
         cpu_temp_warn=t.get("cpu_temp_warn_c", 75),
         cpu_temp_crit=t.get("cpu_temp_crit_c", 85),
-        distance_warn=t.get("distance_warn_m", 15000),
-        distance_crit=t.get("distance_crit_m", 20000),
+        distance_warn=t.get("distance_warn_m", 20000),
+        distance_crit=t.get("distance_crit_m", 21000),
         bad_versions=t.get("bad_versions", []),
         no_ping_models=t.get("no_ping_models", []),
     )
 
     try:
-        report = run_diagnosis(input_data, olt_config, thresholds, allow_actions=not args.no_actions)
+        report = run_diagnosis(input_data, olt_config, thresholds,
+                               allow_actions=not args.no_actions,
+                               ping_target=config.get("ping_target", "1.1.1.1"))
+    except OntNotFoundError as e:
+        print(f"Ошибка: {e}", file=sys.stderr)
+        sys.exit(1)
     except ValueError as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)

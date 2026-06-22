@@ -77,6 +77,8 @@ class OntMetrics:
     register_falls_7d: int = 0
     troubleshooting: str = ""
     ping_status: str = ""
+    ping_target: str = "1.1.1.1"
+    ping_result: dict = field(default_factory=dict)  # {transmit, receive, lost, loss_pct, avg_rtt}
 
     @property
     def is_online(self) -> bool:

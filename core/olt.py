@@ -14,6 +14,10 @@ MORE_PROMPT = "---- More ( Press 'Q' to break ) ----"
 _olt_registry: Dict[str, 'OltConnection'] = {}
 
 
+class OntNotFoundError(Exception):
+    pass
+
+
 def get_olt_connection(host: str, port: int = 23,
                        username: str = "", password: str = "",
                        timeout: int = 15) -> 'OltConnection':
@@ -192,12 +196,10 @@ class OltConnection:
         time.sleep(1)
         self._read_to_prompt(2)
 
-    def collect_ont(self, frame, slot, port, ont_id, verbose=True):
-        """Collect ONT data with parameter validation.
+    def collect_ont(self, frame, slot, port, ont_id, log=None):
+        """Collect ONT data with parameter validation."""
+        _log = log or (lambda msg, end=" ", flush=True: print(msg, end=end, flush=flush))
 
-        Commands are executed in config mode. display ont info works with port/ont_id
-        within GPON context.
-        """
         for param_name, param_value in [("frame", frame), ("slot", slot),
                                        ("port", port), ("ont_id", ont_id)]:
             if not re.fullmatch(r'\d+', param_value):
@@ -205,82 +207,85 @@ class OltConnection:
 
         results = {}
 
-        # Enter gpon context first
         self._gpon_ctx(frame, slot)
 
-        if verbose: print(f"  ont info...", end=" ", flush=True)
+        _log("  ont info...")
         results["ont_info"] = self.send_command(
             f"display ont info {port} {ont_id}", max_more=0
         )
-        if verbose: print("OK")
+        _log("OK")
+
+        if "The required ONT does not exist" in results["ont_info"]:
+            self._quit_gpon()
+            raise OntNotFoundError(f"ONT {frame}/{slot}/{port}/{ont_id} not found on OLT")
 
         status_match = re.search(r"Run state\s*: *(.+)", results["ont_info"])
         is_online = status_match and "online" in status_match.group(1).lower()
         if not is_online:
-            if verbose: print("  ONT offline, пропуск остальных команд")
-            # Still collect register-info for offline ONTs
-            if verbose: print(f"  register-info...", end=" ", flush=True)
+            _log("  ONT offline, пропуск остальных команд")
+            _log("  register-info...")
             results["register_info"] = self.send_command(
                 f"display ont register-info {port} {ont_id}", max_more=-1
             )
-            if verbose: print("OK")
+            _log("OK")
             self._quit_gpon()
             return results
 
-        if verbose: print(f"  ont version...", end=" ", flush=True)
+        _log("  ont version...")
         results["ont_version"] = self.send_command(
             f"display ont version {port} {ont_id}", max_more=0
         )
-        if verbose: print("OK")
+        _log("OK")
 
-        if verbose: print(f"  optical-info...", end=" ", flush=True)
+        _log("  optical-info...")
         results["optical_info"] = self.send_command(
             f"display ont optical-info {port} {ont_id}", max_more=-1
         )
-        if verbose: print("OK")
+        _log("OK")
 
-        if verbose: print(f"  line-quality...", end=" ", flush=True)
+        _log("  line-quality...")
         results["line_quality"] = self.send_command(
             f"display statistics ont-line-quality {port} {ont_id}", max_more=0
         )
-        if verbose: print("OK")
+        _log("OK")
 
-        if verbose: print(f"  port state...", end=" ", flush=True)
+        _log("  port state...")
         results["lan_ports"] = self.send_command(
             f"display ont port state {port} {ont_id} eth-port all", max_more=-1
         )
-        if verbose: print("OK")
+        _log("OK")
 
         for lan_id in range(1, 5):
-            if verbose: print(f"  eth-errors {lan_id}...", end=" ", flush=True)
+            _log(f"  eth-errors {lan_id}...")
             results[f"eth_errors_raw_{lan_id}"] = self.send_command(
                 f"display statistics ont-eth {port} {ont_id} ont-port {lan_id}", max_more=0
             )
-            if verbose: print("OK")
+            _log("OK")
 
-        if verbose: print(f"  mac-address...", end=" ", flush=True)
-        results["mac_addresses"] = self.send_command(
+        _log("  mac-address...")
+        mac_raw = self.send_command(
             f"display mac-address ont {frame}/{slot}/{port} {ont_id}", max_more=-1
         )
-        if verbose: print("OK")
+        results["mac_addresses"] = mac_raw
+        _log(f"OK ({mac_raw.count(chr(10))} строк)")
 
-        if verbose: print(f"  wan-info...", end=" ", flush=True)
+        _log("  wan-info...")
         results["wan_info"] = self.send_command(
             f"display ont wan-info {port} {ont_id}", max_more=-1
         )
-        if verbose: print("OK")
+        _log("OK")
 
-        if verbose: print(f"  ipconfig...", end=" ", flush=True)
+        _log("  ipconfig...")
         results["ipconfig"] = self.send_command(
             f"display ont ipconfig {port} {ont_id}", max_more=0
         )
-        if verbose: print("OK")
+        _log("OK")
 
-        if verbose: print(f"  register-info...", end=" ", flush=True)
+        _log("  register-info...")
         results["register_info"] = self.send_command(
             f"display ont register-info {port} {ont_id}", max_more=-1
         )
-        if verbose: print("OK")
+        _log("OK")
 
         self._quit_gpon()
 
@@ -305,7 +310,9 @@ class OltConnection:
 
     def remote_ping(self, frame, slot, port, ont_id, ip="1.1.1.1"):
         self._gpon_ctx(frame, slot)
-        output = self.send_command(f"ont remote-ping {port} {ont_id} ip-address {ip}", max_more=0)
+        self._write(f"ont remote-ping {port} {ont_id} ip-address {ip}\r")
+        time.sleep(8)
+        output = self._read_to_prompt(5)
         self._quit_gpon()
         return output
 

@@ -51,15 +51,15 @@ def rule_offline(metrics, t):
         return None
     cause = metrics.last_down_cause.lower() if metrics.last_down_cause else ""
     if not cause or cause == "-":
-        return DiagnosisProblem("critical", "unknown", "ONT offline, cause unknown", "Проверить оптическую линию и подключение ONT вручную")
+        return DiagnosisProblem("critical", "unknown", "ONT offline, cause unknown", "Необходимо проверить оптическую линию и подключение ONT вручную")
     if "los" in cause or "losi" in cause or "lobi" in cause:
-        return DiagnosisProblem("critical", "optic", f"Loss of signal: {metrics.last_down_cause}", "Проверить оптическую линию — возможно отключение волокна или повреждение кабеля")
+        return DiagnosisProblem("critical", "optic", f"Loss of signal: {metrics.last_down_cause}", "Необходимо проверить оптическую линию — возможно отключение волокна или повреждение кабеля")
     if "lofi" in cause:
-        return DiagnosisProblem("warning", "optic", f"Low signal: {metrics.last_down_cause}", "Проверить оптическую линию — снижение уровня сигнала")
+        return DiagnosisProblem("warning", "optic", f"Low signal: {metrics.last_down_cause}", "Необходимо проверить оптическую линию — снижение уровня сигнала")
     if "wire-down" in cause:
-        return DiagnosisProblem("critical", "optic", f"Wire-down: {metrics.last_down_cause}", "Проверить магистральный кабель — возможна массовая проблема")
+        return DiagnosisProblem("critical", "optic", f"Wire-down: {metrics.last_down_cause}", "Необходимо проверить магистральный кабель — возможна массовая проблема")
     if "dying-gasp" in cause:
-        return DiagnosisProblem("critical", "power", f"Power loss: {metrics.last_down_cause}", "Проверить электропитание терминала (роутер/БП абонента)")
+        return DiagnosisProblem("critical", "power", f"Power loss: {metrics.last_down_cause}", "Необходимо проверить электропитание терминала, исправность БП.")
     if "loki" in cause:
         return DiagnosisProblem("warning", "optic", f"Loss of key: {metrics.last_down_cause}", "ONT lost authentication key — re-registration may be needed")
     return DiagnosisProblem("warning", "config", f"Offline: {metrics.last_down_cause}", "Уточнить причину отключения, проверить лог на OLT")
@@ -69,9 +69,11 @@ def rule_low_ont_rx(metrics, t):
     if not metrics.is_online or metrics.ont_rx_power >= 900:
         return None
     if metrics.ont_rx_power < t.ont_rx_power_crit:
-        return DiagnosisProblem("critical", "optic", f"Критически низкий ONT Rx: {metrics.ont_rx_power} dBm", "Проверить оптическую линию")
+        return DiagnosisProblem("critical", "optic", f"Критически низкий ONT Rx: {metrics.ont_rx_power} dBm",
+            "Проверить оптическую линию — возможно отключение или повреждение кабеля")
     if metrics.ont_rx_power < t.ont_rx_power_warn:
-        return DiagnosisProblem("warning", "optic", f"Низкий ONT Rx: {metrics.ont_rx_power} dBm", "Сократить длину линии или проверить качество соединений")
+        return DiagnosisProblem("warning", "optic", f"Низкий ONT Rx: {metrics.ont_rx_power} dBm",
+            "Низкий уровень оптического сигнала, необходима проверка оптической линии.")
     return None
 
 
@@ -79,9 +81,9 @@ def rule_low_olt_rx(metrics, t):
     if not metrics.is_online or metrics.olt_rx_power >= 900:
         return None
     if metrics.olt_rx_power < t.olt_rx_power_crit:
-        return DiagnosisProblem("critical", "optic", f"Критически низкий OLT Rx: {metrics.olt_rx_power} dBm", "Проверить лазер ONT, оптическую линию")
+        return DiagnosisProblem("critical", "optic", f"Критически низкий OLT Rx: {metrics.olt_rx_power} dBm", "Необходимо проверить лазер терминала, оптическую линию")
     if metrics.olt_rx_power < t.olt_rx_power_warn:
-        return DiagnosisProblem("warning", "optic", f"Низкий OLT Rx: {metrics.olt_rx_power} dBm", "Возможна деградация линии или терминала")
+        return DiagnosisProblem("warning", "optic", f"Низкий OLT Rx: {metrics.olt_rx_power} dBm", "Возможна деградация линии или оптического терминала")
     return None
 
 
@@ -102,7 +104,7 @@ def rule_bad_firmware(metrics, t):
     if not metrics.is_online or not metrics.version:
         return None
     if metrics.version.upper() in [v.upper() for v in t.bad_versions]:
-        return DiagnosisProblem("warning", "firmware", f"Устаревшее ПО: {metrics.version}", "Обновить прошивку ONT до рекомендуемой версии")
+        return DiagnosisProblem("warning", "firmware", f"Устаревшее ПО: {metrics.version}", "Необходимо обновление ПО терминала")
     return None
 
 
@@ -133,14 +135,6 @@ def rule_long_distance(metrics, t):
 
 
 def rule_match_state(metrics, t):
-    if not metrics.is_online:
-        return None
-    if not metrics.match_state:
-        return None
-    if metrics.match_state.lower() in ("mismatch", "initial"):
-        return DiagnosisProblem("critical", "config",
-            f"Match state: {metrics.match_state}",
-            "ONT не соответствует профилю — проверить привязку, возможно нужна перерегистрация")
     return None
 
 
@@ -350,7 +344,7 @@ def rule_long_uptime(metrics, t):
         return DiagnosisProblem(
             "info", "maintenance",
             f"Длительная работа без перезагрузки: {metrics.online_duration}",
-            "Рекомендуется перезагрузка терминала для обновления состояния"
+            "Необходима перезагрузка оптического терминала."
         )
     return None
 

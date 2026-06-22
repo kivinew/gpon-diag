@@ -289,6 +289,29 @@ body {
     line-height: 1.8;
 }
 
+.console-block {
+    max-width: 600px;
+    width: 100%;
+    background: rgba(15,23,42,0.9);
+    border: 1px solid rgba(56,189,248,0.15);
+    border-radius: 8px;
+    padding: 16px 20px;
+    max-height: 250px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: #334155 transparent;
+}
+
+.console-block pre {
+    margin: 0;
+    font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    color: #22c55e;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
 /* --- Result Card --- */
 .result-card {
     background: rgba(15,23,42,0.6);

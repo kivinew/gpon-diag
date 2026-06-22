@@ -150,8 +150,7 @@ class DiagnosisReport:
             lines.append(f"ONT Rx (dBm): {m.ont_rx_power}")
         if m.olt_rx_power < 900:
             lines.append(f"OLT Rx (dBm): {m.olt_rx_power}")
-        if m.ont_tx_power < 900:
-            lines.append(f"ONT Tx (dBm): {m.ont_tx_power}")
+        if m.upstream_errors > 0 or m.downstream_errors > 0:
             lines.append(f"Ошибки оптики: Up={m.upstream_errors}, Down={m.downstream_errors}")
         else:
             lines.append("Ошибок оптики не обнаружено.")
@@ -187,7 +186,12 @@ class DiagnosisReport:
             lines.append("")
 
         if m.ping_status:
-            lines.append(f"Remote ping to ONT: {m.ping_status}")
+            pr = m.ping_result
+            target = getattr(m, 'ping_target', '1.1.1.1')
+            if pr and pr.get("transmit"):
+                lines.append(f"Remote ping ({target}): {m.ping_status} (Tx={pr['transmit']}, Rx={pr['receive']}, Lost={pr['lost']})")
+            else:
+                lines.append(f"Remote ping ({target}): {m.ping_status}")
 
         if self.problems:
             lines.append("")
@@ -239,6 +243,8 @@ class DiagnosisReport:
             "lan_ports": [{"id": p.lan_id, "type": p.port_type, "speed": p.speed, "duplex": p.duplex, "link": p.link_state} for p in m.lan_ports],
             "wan_connections": m.wan_connections,
             "ping_status": m.ping_status,
+            "ping_target": m.ping_target,
+            "ping_result": m.ping_result,
             "register_down_count": m.register_down_count,
             "register_uptime": m.register_uptime,
             "register_downtime": m.register_downtime,

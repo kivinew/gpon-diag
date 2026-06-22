@@ -2,10 +2,10 @@
 
 {% block content %}
 <div class="input-card">
-    <h1>GPON HUAWEI Диагностика</h1>
+    <h1>Диагностика GPON</h1>
     <p class="subtitle">Введите данные терминала для быстрой диагностики</p>
 
-    <form method="post" action="/" id="diagForm">
+    <form id="diagForm">
         <div class="form-group">
             <label for="olt_host">Головная станция</label>
             <select id="olt_host" name="olt_host" class="form-select">
@@ -19,7 +19,7 @@
             <label for="query">Серийный номер, лицевой счёт или адрес ONT</label>
             <input type="text" id="query" name="query" required
                    placeholder="0/1/1/5 или 48575443C709270E или fl_12345"
-                   autofocus autocomplete="off">
+                   autocomplete="off">
             <div class="form-hints">
                 <span class="form-hint">F/S/P/ONT</span>
                 <span class="form-hint">SN: 48575443…</span>
@@ -32,15 +32,38 @@
     </form>
 </div>
 
-<div id="overlay" class="active" style="display:none;">
+<div id="overlay" style="display:none;">
     <div class="spinner-ring"></div>
-    <div class="loading-text">Подключение к головной станции…</div>
-    <div class="loading-steps" id="loadingSteps">
-        Подключение к OLT<br>
-        Сбор данных ONT<br>
-        Анализ показателей
-    </div>
+    <div class="loading-text" id="loadingStatus">Выполняется диагностика…</div>
 </div>
+
+<div id="resultBlock" style="display:none;"></div>
+
+{% if history %}
+<div class="history-section">
+    <h2>История запросов</h2>
+    <table class="history-table">
+        <thead>
+            <tr>
+                <th>Дата</th>
+                <th>Головная станция</th>
+                <th>Адрес ONT</th>
+                <th>Запрос</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in history %}
+            <tr>
+                <td>{{ row.created_at.strftime('%d.%m.%Y %H:%M') }}</td>
+                <td>{{ row.olt_name }} ({{ row.olt_host }})</td>
+                <td>{{ row.ont_address }}</td>
+                <td>{{ row.input_value }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
 {% endblock %}
 
 {% block scripts %}
@@ -48,32 +71,91 @@
 const form = document.getElementById('diagForm');
 const overlay = document.getElementById('overlay');
 const submitBtn = document.getElementById('submitBtn');
-const steps = document.getElementById('loadingSteps');
+const loadingStatus = document.getElementById('loadingStatus');
+const resultBlock = document.getElementById('resultBlock');
 
-const stepTexts = [
-    'Подключение к головной станции…',
-    'Поиск ONT по запросу…',
-    'Сбор данных: info, optical, version…',
-    'Сбор register-info, MAC, LAN…',
-    'Анализ показателей…',
-    'Формирование отчёта…'
-];
+form.addEventListener('submit', function(e) {
+    e.preventDefault();
+    const query = document.getElementById('query').value.trim();
+    const oltHost = document.getElementById('olt_host').value;
+    if (!query) return;
 
-let stepIndex = 0;
-let stepTimer = null;
-
-form.addEventListener('submit', function() {
-    overlay.style.display = 'flex';
-    overlay.classList.add('active');
     submitBtn.disabled = true;
-    stepIndex = 0;
+    overlay.style.display = 'flex';
+    resultBlock.style.display = 'none';
+    loadingStatus.textContent = 'Выполняется диагностика…';
 
-    stepTimer = setInterval(function() {
-        stepIndex++;
-        if (stepIndex < stepTexts.length) {
-            steps.innerHTML = stepTexts[stepIndex];
+    fetch('/api/diagnose', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({query: query, olt_host: oltHost})
+    }).then(function(resp) {
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        function read() {
+            reader.read().then(function({done, value}) {
+                if (done) { submitBtn.disabled = false; return; }
+                buffer += decoder.decode(value, {stream: true});
+                const lines = buffer.split('\n');
+                buffer = lines.pop();
+
+                for (const line of lines) {
+                    if (!line.startsWith('data: ')) continue;
+                    try {
+                        const msg = JSON.parse(line.slice(6));
+                        if (msg.type === 'log') {
+                            loadingStatus.textContent = msg.line;
+                        } else if (msg.type === 'result') {
+                            overlay.style.display = 'none';
+                            submitBtn.disabled = false;
+                            resultBlock.style.display = 'block';
+                            resultBlock.innerHTML =
+                                '<div class="result-card">' +
+                                '<div class="result-header"><h1>Результат диагностики</h1>' +
+                                '<div class="result-actions">' +
+                                '<button class="btn-copy" onclick="copyReport()">' +
+                                '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg> Копировать</button>' +
+                                '<a href="/" class="btn-back">Новый запрос</a></div></div>' +
+                                '<div class="report-block" id="report">' + escapeHtml(msg.report) + '</div></div>';
+                        } else if (msg.type === 'error') {
+                            overlay.style.display = 'none';
+                            submitBtn.disabled = false;
+                            resultBlock.style.display = 'block';
+                            resultBlock.innerHTML =
+                                '<div class="result-card"><div class="result-header"><h1>Ошибка</h1>' +
+                                '<a href="/" class="btn-back">Новый запрос</a></div>' +
+                                '<div class="flash-msg error">' + escapeHtml(msg.message) + '</div></div>';
+                        }
+                    } catch(err) {}
+                }
+                read();
+            });
         }
-    }, 4000);
+        read();
+    }).catch(function(err) {
+        overlay.style.display = 'none';
+        submitBtn.disabled = false;
+        loadingStatus.textContent = 'Ошибка сети: ' + err.message;
+    });
 });
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function copyReport() {
+    const text = document.getElementById('report').innerText;
+    navigator.clipboard.writeText(text).then(function() {
+        const btn = document.querySelector('.btn-copy');
+        btn.classList.add('copied');
+        const old = btn.innerHTML;
+        btn.innerHTML = '✓ Скопировано!';
+        setTimeout(function() { btn.classList.remove('copied'); btn.innerHTML = old; }, 2000);
+    });
+}
 </script>
 {% endblock %}
