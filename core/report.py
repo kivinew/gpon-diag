@@ -4,8 +4,10 @@ import logging
 import os
 import re
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from core.models import OntMetrics
+
+TZ_LOCAL = timezone(timedelta(hours=7))
 
 logger = logging.getLogger(__name__)
 

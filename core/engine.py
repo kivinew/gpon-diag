@@ -49,9 +49,9 @@ class DiagnosticEngine:
 def rule_offline(metrics, t):
     if metrics.is_online:
         return None
-    cause = metrics.last_down_cause.lower()
+    cause = metrics.last_down_cause.lower() if metrics.last_down_cause else ""
     if not cause or cause == "-":
-        return DiagnosisProblem("critical", "unknown", "ONT offline, cause unknown", "Check fiber, connectors, ONT manually")
+        return DiagnosisProblem("critical", "unknown", "ONT offline, cause unknown", "Проверить оптическую линию и подключение ONT вручную")
     if "los" in cause or "losi" in cause or "lobi" in cause:
         return DiagnosisProblem("critical", "optic", f"Loss of signal: {metrics.last_down_cause}", "Проверить оптическую линию — возможно отключение волокна или повреждение кабеля")
     if "lofi" in cause:

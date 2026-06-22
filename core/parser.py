@@ -119,9 +119,9 @@ def parse_ont_info(raw: str, m: OntMetrics) -> None:
     m.online_duration = _search(raw, PATTERNS["online_duration"]) or ""
 
 def parse_ont_version(raw: str, m: OntMetrics) -> None:
-    model = _search(raw, PATTERNS["ont_model"])
+    model = _search(raw, PATTERNS["ont_model_alt"])
     if not model:
-        model = _search(raw, PATTERNS["ont_model_alt"])
+        model = _search(raw, PATTERNS["ont_model"])
     m.model = model or ""
     m.version = _search(raw, PATTERNS["soft_version"]) or ""
 

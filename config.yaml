@@ -2,12 +2,98 @@
 
 # OLT List
 olts:
-  - name: "OLT-17.232"
+  - name: "Тестовая станция Huawei"
     host: "172.16.17.232"
     port: 23
-  - name: "OLT-40.111"
+    credential_key: "RADIUS"
+  - name: "пос.Плотниково"
+    host: "172.16.17.164"
+    port: 23
+    credential_key: "RADIUS"
+  - name: "пос.Новостройка, с.Берёзово"
+    host: "172.16.17.181"
+    port: 23
+    credential_key: "RADIUS"
+  - name: "пос.Металлплощадка"
+    host: "172.16.17.182"
+    port: 23
+    credential_key: "RADIUS"
+  - name: "пос.Елыкаево, с.Силино"
+    host: "172.16.17.183"
+    port: 23
+    credential_key: "RADIUS"
+  - name: "д.Береговая, пос.Кузбасский, пос.Смирновский, с.Смолино"
+    host: "172.16.17.186"
+    port: 23
+    credential_key: "RADIUS"
+  - name: "г.Юрга, пос.Зимник, пос.Сарсаз"
+    host: "172.16.17.188"
+    port: 23
+    credential_key: "RADIUS"
+  - name: "г.Берёзовский, шахта Березовская"
+    host: "172.16.32.60"
+    port: 23
+    credential_key: "RADIUS"
+  - name: "г.Берёзовский, шахта Южная"
+    host: "172.16.32.61"
+    port: 23
+    credential_key: "RADIUS"
+  - name: "село Топки, пос.Ясногорский, с.Мазурово, д.Камышная"
+    host: "172.16.37.100"
+    port: 23
+    credential_key: "RADIUS"
+  - name: "пос.Пригородный"
+    host: "172.16.37.223"
+    port: 23
+    credential_key: "RADIUS"
+  - name: "пос.Верхотомка"
+    host: "172.16.37.249"
+    port: 23
+    credential_key: "RADIUS"
+  - name: "пос.Ягуновка, пос.Комиссарово"
+    host: "172.16.37.251"
+    port: 23
+    credential_key: "RADIUS"
+  - name: "пос.Пионер"
+    host: "172.16.37.252"
+    port: 23
+    credential_key: "RADIUS"
+  - name: "пос.Звёздный, д.Мозжуха"
+    host: "172.16.37.253"
+    port: 23
+    credential_key: "RADIUS"
+  - name: "пос.Барзас"
     host: "172.16.40.111"
     port: 23
+    credential_key: "RADIUS"
+  - name: "г.Топки"
+    host: "172.16.54.61"
+    port: 23
+    credential_key: "RADIUS"
+  - name: "г.Калтан, пос.Малиновка"
+    host: "172.16.56.175"
+    port: 23
+    credential_key: "RADIUS"
+  - name: "г.Калтан, пос.Сарбала, пос.Зелёный Луг"
+    host: "172.16.56.203"
+    port: 23
+    credential_key: "RADIUS"
+  - name: "Старопестерёво, Мохово, Грамотеино"
+    host: "172.16.57.210"
+    port: 23
+    credential_key: "RADIUS"
+  - name: "ПГТ Инской, г.Белово, д.Вишневка, ПГТ Снежинский"
+    host: "172.16.57.233"
+    port: 23
+    credential_key: "RADIUS"
+  - name: "пос.Старобачаты, пос.Щебзавод"
+    host: "172.16.57.234"
+    port: 23
+    credential_key: "RADIUS"
+  - name: "пос.Безруково, с.Боровково"
+    host: "172.16.68.200"
+    port: 23
+    credential_key: "RADIUS"
 
 # Diagnostic thresholds
 thresholds:

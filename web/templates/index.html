@@ -1,0 +1,79 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="input-card">
+    <h1>GPON HUAWEI Диагностика</h1>
+    <p class="subtitle">Введите данные терминала для быстрой диагностики</p>
+
+    <form method="post" action="/" id="diagForm">
+        <div class="form-group">
+            <label for="olt_host">Головная станция</label>
+            <select id="olt_host" name="olt_host" class="form-select">
+                <option value="">Авто-определение</option>
+                {% for olt in olts %}
+                <option value="{{ olt.host }}">{{ olt.name }} ({{ olt.host }})</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="form-group">
+            <label for="query">Серийный номер, лицевой счёт или адрес ONT</label>
+            <input type="text" id="query" name="query" required
+                   placeholder="0/1/1/5 или 48575443C709270E или fl_12345"
+                   autofocus autocomplete="off">
+            <div class="form-hints">
+                <span class="form-hint">F/S/P/ONT</span>
+                <span class="form-hint">SN: 48575443…</span>
+                <span class="form-hint">Лицевой: fl_…</span>
+            </div>
+        </div>
+        <button type="submit" class="btn-primary" id="submitBtn">
+            Запустить диагностику
+        </button>
+    </form>
+</div>
+
+<div id="overlay" class="active" style="display:none;">
+    <div class="spinner-ring"></div>
+    <div class="loading-text">Подключение к головной станции…</div>
+    <div class="loading-steps" id="loadingSteps">
+        Подключение к OLT<br>
+        Сбор данных ONT<br>
+        Анализ показателей
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const form = document.getElementById('diagForm');
+const overlay = document.getElementById('overlay');
+const submitBtn = document.getElementById('submitBtn');
+const steps = document.getElementById('loadingSteps');
+
+const stepTexts = [
+    'Подключение к головной станции…',
+    'Поиск ONT по запросу…',
+    'Сбор данных: info, optical, version…',
+    'Сбор register-info, MAC, LAN…',
+    'Анализ показателей…',
+    'Формирование отчёта…'
+];
+
+let stepIndex = 0;
+let stepTimer = null;
+
+form.addEventListener('submit', function() {
+    overlay.style.display = 'flex';
+    overlay.classList.add('active');
+    submitBtn.disabled = true;
+    stepIndex = 0;
+
+    stepTimer = setInterval(function() {
+        stepIndex++;
+        if (stepIndex < stepTexts.length) {
+            steps.innerHTML = stepTexts[stepIndex];
+        }
+    }, 4000);
+});
+</script>
+{% endblock %}

@@ -128,7 +128,14 @@ class OltConnection:
         self.disconnect()
 
     def _write(self, text):
-        self._sock.sendall(text.encode("utf-8"))
+        try:
+            self._sock.sendall(text.encode("utf-8"))
+        except (ConnectionResetError, BrokenPipeError, OSError) as e:
+            logger.warning(f"Write failed ({e}), reconnecting...")
+            self._connected = False
+            self._sock = None
+            self.connect()
+            self._sock.sendall(text.encode("utf-8"))
 
     def _read_to_prompt(self, seconds=2):
         buf = b""
@@ -140,8 +147,8 @@ class OltConnection:
                     chunk = self._sock.recv(8192)
                     if chunk:
                         buf += _strip_iac(chunk)
-                except socket.timeout:
-                    pass
+                except (socket.timeout, ConnectionResetError, BrokenPipeError, OSError):
+                    break
             text = buf.decode("utf-8", errors="ignore")
             lines = text.rstrip().split("\n")
             if lines:
@@ -151,8 +158,16 @@ class OltConnection:
         return buf.decode("utf-8", errors="ignore")
 
     def send_command(self, command, max_more=0):
-        self._write(command + "\r")
-        output = self._read_to_prompt(5)
+        try:
+            self._write(command + "\r")
+            output = self._read_to_prompt(5)
+        except (ConnectionResetError, BrokenPipeError, OSError) as e:
+            logger.warning(f"Command '{command}' failed ({e}), reconnecting...")
+            self._connected = False
+            self._sock = None
+            self.connect()
+            self._write(command + "\r")
+            output = self._read_to_prompt(5)
 
         if MORE_PROMPT in output:
             if max_more == -1:

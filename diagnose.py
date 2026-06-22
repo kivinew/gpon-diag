@@ -17,10 +17,12 @@ import os
 import re
 import sys
 import yaml
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
 
 load_dotenv()
+
+TZ_LOCAL = timezone(timedelta(hours=7))
 
 from core.models import OntMetrics, LanPort
 from core.parser import (
@@ -94,9 +96,7 @@ def parse_input(buffer):
     tokens = buffer.replace("/", " ").split()
     if len(tokens) == 4 and all(t.isdigit() for t in tokens):
         return {"type": "address", "frame": tokens[0], "slot": tokens[1], "port": tokens[2], "ont_id": tokens[3]}
-    if re.match(r"^(fl_|kes)?\d{5,16}$", buffer):
-        return {"type": "description", "value": buffer}
-    raise ValueError(f"Cannot recognize: '{buffer}'")
+    return {"type": "description", "value": buffer}
 
 
 def _olt_secret_key(olt_name: str) -> str:
@@ -109,6 +109,13 @@ def _olt_secret_key(olt_name: str) -> str:
 
 
 def _load_olt_credentials(olt_config: dict):
+    explicit_key = olt_config.get('credential_key', '')
+    if explicit_key:
+        username = os.getenv(f'GPON_OLT_{explicit_key}_USERNAME', '')
+        password = os.getenv(f'GPON_OLT_{explicit_key}_PASSWORD', '')
+        if username and password:
+            return username, password
+
     olt_name = olt_config.get('name', '')
     key = _olt_secret_key(olt_name) if olt_name else ''
     if key:
@@ -189,7 +196,7 @@ def run_diagnosis(input_data, olt_config, thresholds, allow_actions=True):
     if "register_info" in raw_data:
         parse_register_info(raw_data["register_info"], metrics)
 
-    metrics.fetch_timestamp = datetime.now().isoformat()
+    metrics.fetch_timestamp = datetime.now(TZ_LOCAL).isoformat()
 
     print("Анализ...", end=" ", flush=True)
     engine = create_extended_engine(thresholds)
@@ -230,7 +237,7 @@ def run_diagnosis(input_data, olt_config, thresholds, allow_actions=True):
             print(metrics.ping_status)
 
     return DiagnosisReport(
-        datetime.now().isoformat(), host,
+        datetime.now(TZ_LOCAL).isoformat(), host,
         metrics, problems, not metrics.is_online,
     )
 

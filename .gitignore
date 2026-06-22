@@ -22,6 +22,8 @@ Thumbs.db
 # Project specific
 data/reports/
 data/incidents/
+data/*.db
+*.db
 *.log
 uv.lock
 
