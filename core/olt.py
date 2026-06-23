@@ -81,7 +81,7 @@ class OltConnection:
             self._read_to_prompt(2)
             self._write("config\r")
             self._read_to_prompt(2)
-            # Paging disabled (not needed)
+            self._drain_socket()
             self._connected = True
         except Exception as e:
             logger.error(f"Failed to connect to {self.host}:{self.port}: {e}")
@@ -93,27 +93,7 @@ class OltConnection:
             raise
 
     def get_olt_info(self) -> dict:
-        # Ensure clean prompt line before command
-        self._write("\r")
-        output = self.send_command("display version", max_more=-1)
-        # No need for extra sleep – send_command handles prompt and pagination
-
-        info = {"model": "", "uptime": "", "version": ""}
-        for line in output.split("\n"):
-            line = line.strip()
-            if not line:
-                continue
-            if not info["model"]:
-                m = re.search(r'(MA\d+\S*|HUAWEI\s+\S+)', line, re.IGNORECASE)
-                if m:
-                    info["model"] = m.group(1).strip()
-            uptime_match = re.search(r'uptime is\s+(.+)', line, re.IGNORECASE)
-            if uptime_match:
-                info["uptime"] = uptime_match.group(1).strip()
-            ver_match = re.search(r'Version\s+([\d.]+)', line)
-            if ver_match and not info["version"]:
-                info["version"] = ver_match.group(1).strip()
-        return info
+        return {"model": "", "uptime": "", "version": ""}
 
     def disconnect(self):
         if self._sock:
@@ -159,7 +139,7 @@ class OltConnection:
             lines = text.rstrip().split("\n")
             if lines:
                 last = lines[-1].strip()
-                if re.match(r'^\S+(?:\([^\n]+\))?[>#]\s*$', last):
+                if re.match(r'^\S+(?:\([^\n]+\))?[>#:]\s*$', last) or re.search(r'\}\s*:\s*$', last):
                     break
         return buf.decode("utf-8", errors="ignore")
 
@@ -177,18 +157,27 @@ class OltConnection:
 
         if MORE_PROMPT in output:
             if max_more == -1:
-                while MORE_PROMPT in output:
+                while True:
                     self._write(" \r")
                     time.sleep(0.3)
-                    output += self._read_to_prompt(2)
+                    chunk = self._read_to_prompt(2)
+                    output += chunk
+                    if MORE_PROMPT not in chunk:
+                        break
             else:
                 self._write("q\r")
                 time.sleep(0.3)
                 output += self._read_to_prompt(2)
 
+        if re.search(r'\}\s*:\s*$', output.rstrip()):
+            self._write("\r")
+            time.sleep(0.5)
+            output += self._read_to_prompt(5)
+
         return output
 
     def _gpon_ctx(self, frame, slot):
+        self._drain_socket()
         self._write(f"interface gpon {frame}/{slot}\r")
         time.sleep(1)
         self._read_to_prompt(3)
@@ -198,9 +187,21 @@ class OltConnection:
         time.sleep(1)
         self._read_to_prompt(2)
 
+    def _drain_socket(self):
+        try:
+            while True:
+                ready = select.select([self._sock], [], [], 0.3)
+                if ready[0]:
+                    self._sock.recv(8192)
+                else:
+                    break
+        except Exception:
+            pass
+
     def collect_ont(self, frame, slot, port, ont_id, log=None):
         """Collect ONT data with parameter validation."""
         _log = log or (lambda msg, end=" ", flush=True: print(msg, end=end, flush=flush))
+        self._drain_socket()
 
         for param_name, param_value in [("frame", frame), ("slot", slot),
                                        ("port", port), ("ont_id", ont_id)]:
@@ -209,16 +210,13 @@ class OltConnection:
 
         results = {}
 
-        self._gpon_ctx(frame, slot)
-
         _log("  ont info...")
         results["ont_info"] = self.send_command(
-            f"display ont info {port} {ont_id}", max_more=0
+            f"display ont info {frame} {slot} {port} {ont_id}", max_more=0
         )
         _log("OK")
 
         if "The required ONT does not exist" in results["ont_info"]:
-            self._quit_gpon()
             raise OntNotFoundError(f"ONT {frame}/{slot}/{port}/{ont_id} not found on OLT")
 
         status_match = re.search(r"Run state\s*: *(.+)", results["ont_info"])
@@ -227,40 +225,41 @@ class OltConnection:
             _log("  ONT offline, пропуск остальных команд")
             _log("  register-info...")
             results["register_info"] = self.send_command(
-                f"display ont register-info {port} {ont_id}", max_more=-1
+                f"display ont register-info {frame} {slot} {port} {ont_id}", max_more=-1
             )
             _log("OK")
-            self._quit_gpon()
             return results
 
         _log("  ont version...")
         results["ont_version"] = self.send_command(
-            f"display ont version {port} {ont_id}", max_more=0
+            f"display ont version {frame} {slot} {port} {ont_id}", max_more=0
         )
         _log("OK")
 
         _log("  optical-info...")
+        self._gpon_ctx(frame, slot)
         results["optical_info"] = self.send_command(
             f"display ont optical-info {port} {ont_id}", max_more=-1
         )
+        self._quit_gpon()
         _log("OK")
 
         _log("  line-quality...")
         results["line_quality"] = self.send_command(
-            f"display statistics ont-line-quality {port} {ont_id}", max_more=0
+            f"display statistics ont-line-quality {frame} {slot} {port} {ont_id}", max_more=0
         )
         _log("OK")
 
         _log("  port state...")
         results["lan_ports"] = self.send_command(
-            f"display ont port state {port} {ont_id} eth-port all", max_more=-1
+            f"display ont port state {frame} {slot} {port} {ont_id} eth-port all", max_more=-1
         )
         _log("OK")
 
         for lan_id in range(1, 5):
             _log(f"  eth-errors {lan_id}...")
             results[f"eth_errors_raw_{lan_id}"] = self.send_command(
-                f"display statistics ont-eth {port} {ont_id} ont-port {lan_id}", max_more=0
+                f"display statistics ont-eth {frame} {slot} {port} {ont_id} ont-port {lan_id}", max_more=0
             )
             _log("OK")
 
@@ -273,23 +272,21 @@ class OltConnection:
 
         _log("  wan-info...")
         results["wan_info"] = self.send_command(
-            f"display ont wan-info {port} {ont_id}", max_more=-1
+            f"display ont wan-info {frame} {slot} {port} {ont_id}", max_more=-1
         )
         _log("OK")
 
         _log("  ipconfig...")
         results["ipconfig"] = self.send_command(
-            f"display ont ipconfig {port} {ont_id}", max_more=0
+            f"display ont ipconfig {frame} {slot} {port} {ont_id}", max_more=0
         )
         _log("OK")
 
         _log("  register-info...")
         results["register_info"] = self.send_command(
-            f"display ont register-info {port} {ont_id}", max_more=-1
+            f"display ont register-info {frame} {slot} {port} {ont_id}", max_more=-1
         )
         _log("OK")
-
-        self._quit_gpon()
 
         return results
 
