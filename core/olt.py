@@ -63,28 +63,29 @@ class OltConnection:
         self._connected = False
 
     def connect(self):
-        self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self._sock.settimeout(self.timeout)
-        self._sock.connect((self.host, self.port))
-        # Accept telnet negotiations
-        self._sock.sendall(b"\xff\xfb\x01\xff\xfb\x03")
-        # Read banner and login prompts
-        self._read_to_prompt(2)
-        self._write(self.username + "\r")
-        time.sleep(1)
-        self._read_to_prompt(2)
-        self._write(self.password + "\r")
-        time.sleep(2)
-        # Enter enable mode and config mode
-        self._write("enable\r")
-        self._read_to_prompt(2)
-        self._write("config\r")
-        self._read_to_prompt(2)
-        # Disable paging – use same double‑enter pattern as before
-        self._write("scroll\r\r")
-        # Flush the extra carriage return that remains after the double‑enter
-        self._write("\r")
-        self._connected = True
+        try:
+            self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self._sock.settimeout(self.timeout)
+            self._sock.connect((self.host, self.port))
+            # Accept telnet negotiations
+            self._sock.sendall(b"\xff\xfb\x01\xff\xfb\x03")
+            # Read banner and login prompts
+            self._read_to_prompt(2)
+            self._write(self.username + "\r")
+            time.sleep(1)
+            self._read_to_prompt(2)
+            self._write(self.password + "\r")
+            time.sleep(2)
+            # Enter enable mode and config mode
+            self._write("enable\r")
+            self._read_to_prompt(2)
+            self._write("config\r")
+            self._read_to_prompt(2)
+            # Disable paging – use same double‑enter pattern as before
+            self._write("scroll\r\r")
+            # Flush the extra carriage return that remains after the double‑enter
+            self._write("\r")
+            self._connected = True
         except Exception as e:
             logger.error(f"Failed to connect to {self.host}:{self.port}: {e}")
             if self._sock:
