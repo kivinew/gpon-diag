@@ -95,11 +95,9 @@ class OltConnection:
             raise
 
     def get_olt_info(self) -> dict:
-        # Ensure we start from a clean prompt line
-        self._write("\r\n")
-        self._write("display version\r\n")
-        time.sleep(2)
-        output = self._read_to_prompt(8)
+        output = self.send_command("display version", max_more=-1)
+        # No need for extra sleep – send_command handles prompt and pagination
+
         info = {"model": "", "uptime": "", "version": ""}
         for line in output.split("\n"):
             line = line.strip()
