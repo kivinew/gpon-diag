@@ -83,8 +83,7 @@ class OltConnection:
             self._read_to_prompt(2)
             # Disable paging – use same double‑enter pattern as before
             self._write("scroll\r\r")
-            # Flush the extra carriage return that remains after the double‑enter
-            self._write("\r")
+
             self._connected = True
         except Exception as e:
             logger.error(f"Failed to connect to {self.host}:{self.port}: {e}")
@@ -96,7 +95,9 @@ class OltConnection:
             raise
 
     def get_olt_info(self) -> dict:
-        self._write("display version\r")
+        # Ensure we start from a clean prompt line
+        self._write("\r\n")
+        self._write("display version\r\n")
         time.sleep(2)
         output = self._read_to_prompt(8)
         info = {"model": "", "uptime": "", "version": ""}
