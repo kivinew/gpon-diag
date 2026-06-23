@@ -109,14 +109,10 @@ def api_diagnose():
                     log_q.put({"type": "olt_info", "model": info["model"],
                                "uptime": info["uptime"], "version": info["version"]})
 
-                def on_ont_list(onts):
-                    log_q.put({"type": "ont_list", "onts": onts})
-
                 report = run_diagnosis(input_data, olt_config, thresholds,
                                        allow_actions=False, log=log_fn,
                                        ping_target=config.get("ping_target", "1.1.1.1"),
-                                       on_olt_info=on_olt_info,
-                                       on_ont_list=on_ont_list)
+                                       on_olt_info=on_olt_info)
 
                 diag = Diagnosis(
                     timestamp=report.timestamp,

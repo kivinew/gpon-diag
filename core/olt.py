@@ -114,16 +114,18 @@ class OltConnection:
             raise
 
     def get_olt_info(self) -> dict:
-        output = self.send_command("display version", max_more=-1)
+        self._write("display version\r")
+        time.sleep(2)
+        output = self._read_to_prompt(8)
         info = {"model": "", "uptime": "", "version": ""}
         for line in output.split("\n"):
             line = line.strip()
             if not line:
                 continue
-            if not info["model"] and re.match(r'^(?:MA|华为|HUAWEI|HUawei)\s*\S+', line, re.IGNORECASE):
-                info["model"] = line
-            elif not info["model"] and re.match(r'^[A-Za-z0-9_\-]+$', line) and len(line) > 2:
-                info["model"] = line
+            if not info["model"]:
+                m = re.search(r'(MA\d+\S*|HUAWEI\s+\S+)', line, re.IGNORECASE)
+                if m:
+                    info["model"] = m.group(1).strip()
             uptime_match = re.search(r'uptime is\s+(.+)', line, re.IGNORECASE)
             if uptime_match:
                 info["uptime"] = uptime_match.group(1).strip()
@@ -131,58 +133,6 @@ class OltConnection:
             if ver_match and not info["version"]:
                 info["version"] = ver_match.group(1).strip()
         return info
-
-    def collect_all_onts(self, frame, slot, log=None):
-        _log = log or (lambda msg, end=" ", flush=True: print(msg, end=end, flush=flush))
-        self._gpon_ctx(frame, slot)
-        all_onts = []
-        for port in range(0, 16):
-            _log(f"  scan port {port}...")
-            output = self.send_command(f"display ont info {port}", max_more=-1)
-            if "No ONT" in output or "not found" in output.lower() or "error" in output.lower():
-                _log(" (пусто)")
-                continue
-            lines = output.split("\n")
-            header_idx = -1
-            for i, line in enumerate(lines):
-                if "ONT-ID" in line and ("SN" in line or "Description" in line or "Run" in line):
-                    header_idx = i
-                    break
-            if header_idx < 0:
-                for i, line in enumerate(lines):
-                    if re.match(r'\s*\d+\s+', line):
-                        header_idx = i
-                        break
-            if header_idx < 0:
-                _log(f" ({lines[-1].strip()[:40] if lines else 'no data'})")
-                continue
-            separator = lines[header_idx]
-            sep_positions = [m.start() for m in re.finditer(r'\S{2,}', separator)]
-            for line in lines[header_idx + 1:]:
-                line = line.strip()
-                if not line or not re.match(r'\s*\d+', line):
-                    continue
-                fields = []
-                for j in range(len(sep_positions)):
-                    start = sep_positions[j]
-                    end = sep_positions[j + 1] if j + 1 < len(sep_positions) else len(line)
-                    fields.append(line[start:end].strip() if start < len(line) else "")
-                while len(fields) < 5:
-                    fields.append("")
-                ont_id = fields[0] if fields else ""
-                sn = fields[1] if len(fields) > 1 else ""
-                desc = fields[2] if len(fields) > 2 else ""
-                model = fields[3] if len(fields) > 3 else ""
-                run_state = fields[4] if len(fields) > 4 else ""
-                if ont_id and ont_id.isdigit():
-                    all_onts.append({
-                        "frame": frame, "slot": slot, "port": str(port),
-                        "ont_id": ont_id, "sn": sn, "description": desc,
-                        "model": model, "run_state": run_state
-                    })
-            _log(f"OK ({len([o for o in all_onts if o['port'] == str(port)])} ONT)")
-        self._quit_gpon()
-        return all_onts
 
     def disconnect(self):
         if self._sock:

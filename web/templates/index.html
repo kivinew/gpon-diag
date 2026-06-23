@@ -45,25 +45,6 @@
     </div>
 </div>
 
-<div id="ontTableWrap" style="display:none;">
-    <h2 class="ont-table-title">ONT на интерфейсе</h2>
-    <div class="ont-table-scroll">
-        <table class="ont-table" id="ontTable">
-            <thead>
-                <tr>
-                    <th>F/S/P</th>
-                    <th>ONT-ID</th>
-                    <th>SN</th>
-                    <th>Описание</th>
-                    <th>Модель</th>
-                    <th>Статус</th>
-                </tr>
-            </thead>
-            <tbody id="ontTableBody"></tbody>
-        </table>
-    </div>
-</div>
-
 <div id="resultBlock" style="display:none;"></div>
 
 {% if history %}
@@ -111,8 +92,6 @@ form.addEventListener('submit', function(e) {
     overlay.style.display = 'flex';
     resultBlock.style.display = 'none';
     document.getElementById('oltInfoBar').style.display = 'none';
-    document.getElementById('ontTableWrap').style.display = 'none';
-    document.getElementById('ontTableBody').innerHTML = '';
     loadingStatus.textContent = 'Выполняется диагностика…';
 
     fetch('/api/diagnose', {
@@ -145,25 +124,6 @@ form.addEventListener('submit', function(e) {
                             loadingStatus.textContent = 'Подключение к ' + (msg.model || 'OLT') + '…';
                             var badge = document.querySelector('.header-badge');
                             if (badge && msg.model) badge.textContent = msg.model;
-                        } else if (msg.type === 'ont_list') {
-                            var tbody = document.getElementById('ontTableBody');
-                            tbody.innerHTML = '';
-                            if (msg.onts && msg.onts.length > 0) {
-                                msg.onts.forEach(function(ont) {
-                                    var tr = document.createElement('tr');
-                                    var stateClass = (ont.run_state || '').toLowerCase().indexOf('online') >= 0 ? 'ont-online' :
-                                                     (ont.run_state || '').toLowerCase().indexOf('offline') >= 0 ? 'ont-offline' : '';
-                                    tr.innerHTML =
-                                        '<td>' + escapeHtml(ont.frame + '/' + ont.slot + '/' + ont.port) + '</td>' +
-                                        '<td>' + escapeHtml(ont.ont_id) + '</td>' +
-                                        '<td class="ont-sn">' + escapeHtml(ont.sn) + '</td>' +
-                                        '<td>' + escapeHtml(ont.description) + '</td>' +
-                                        '<td>' + escapeHtml(ont.model) + '</td>' +
-                                        '<td class="' + stateClass + '">' + escapeHtml(ont.run_state) + '</td>';
-                                    tbody.appendChild(tr);
-                                });
-                                document.getElementById('ontTableWrap').style.display = 'block';
-                            }
                         } else if (msg.type === 'result') {
                             overlay.style.display = 'none';
                             submitBtn.disabled = false;

@@ -7,11 +7,14 @@
 - Подключение к Huawei OLT через Telnet
 - Сбор оптических параметров ONT (Rx/Tx power, laser bias, temperature, voltage)
 - Парсинг диагностической информации (FEC, BIP errors, distance, last-down-cause)
-- Rule-based движок диагностики с настраиваемыми порогами
+- Rule-based движок диагностики с 21 правилом (13 default + 8 extended)
 - Генерация текстовых и JSON-отчётов
 - Интеграция с SecureCRT (адаптер + stub)
 - Диагностика WAN-соединений и LAN-портов
 - Мониторинг CPU, памяти, температуры ONT
+- Web-интерфейс с real-time логами (Flask + SSE)
+- SQLite для хранения истории диагнозов
+- Автоматическое копирование отчёта в буфер обмена
 
 ## Структура проекта
 
@@ -38,6 +41,10 @@ gpon-diag/
 │   └── reports/          # Сгенерированные отчёты
 ├── tests/
 │   └── test_smoke.py     # Smoke-тесты движка диагностики
+├── web/
+│   ├── app.py             # Flask web-интерфейс с SSE
+│   ├── static/            # CSS/JS
+│   └── templates/         # HTML-шаблоны
 └── .env.example          # Шаблон переменных окружения
 ```
 
@@ -121,6 +128,14 @@ uv run diagnose.py 0/1/3/9 --no-save
 uv run python -m tests.test_smoke
 ```
 
+### Web-интерфейс
+
+```bash
+uv run python -m web.app
+```
+
+Откройте http://localhost:5000 в браузере.
+
 ## Конфигурация
 
 Основной файл: `config.yaml`
@@ -194,7 +209,9 @@ report:
 
 - Python 3.12+
 - pyyaml — конфигурация
-- telnetlib3 — асинхронный Telnet
+- python-dotenv — переменные окружения
+- pyperclip — копирование в буфер обмена
+- Flask + flask_sqlalchemy — web-интерфейс
 
 ## Безопасность
 

@@ -131,7 +131,7 @@ def _load_olt_credentials(olt_config: dict):
     return username, password
 
 
-def run_diagnosis(input_data, olt_config, thresholds, allow_actions=True, log=None, ping_target="1.1.1.1", on_olt_info=None, on_ont_list=None):
+def run_diagnosis(input_data, olt_config, thresholds, allow_actions=True, log=None, ping_target="1.1.1.1", on_olt_info=None):
     _log = log or (lambda msg, end=" ", flush=True: print(msg, end=end, flush=flush))
     host = olt_config["host"]
     port = olt_config.get("port", 23)
@@ -169,15 +169,6 @@ def run_diagnosis(input_data, olt_config, thresholds, allow_actions=True, log=No
             return DiagnosisReport(datetime.now(TZ_LOCAL).isoformat(), host, OntMetrics(), [], True)
         _log("OK")
         input_data.update(loc)
-
-    _log("Сканирование ONT на интерфейсе...")
-    all_onts = olt.collect_all_onts(
-        sanitize_ont_param(input_data["frame"]),
-        sanitize_ont_param(input_data["slot"]),
-        log=_log,
-    )
-    if on_ont_list:
-        on_ont_list(all_onts)
 
     addr = f"{input_data['frame']}/{input_data['slot']}/{input_data['port']}/{input_data['ont_id']}"
     _log(f"Сбор данных ONT {addr}:")
