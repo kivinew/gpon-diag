@@ -13,7 +13,6 @@ from flask import Flask, render_template, request, redirect, url_for, flash, Res
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import text
 
-sys.path.append(os.path.abspath(os.path.dirname(__file__) + os.sep + ".."))
 
 from diagnose import load_config, find_available_olt, parse_input, run_diagnosis
 from core.olt import OntNotFoundError

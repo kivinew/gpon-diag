@@ -8,7 +8,15 @@ VENV_SITE = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".venv
 sys.path.append(VENV_SITE)
 
 if __name__ == "__main__":
-    from web import app  # import Flask app
+    # Load environment variables (config.yaml may rely on .env)
+    from dotenv import load_dotenv
+    load_dotenv(os.path.join(PROJECT_ROOT, ".env"))
+    try:
+        from web import app  # import Flask app
+    except Exception as exc:
+        import traceback, sys
+        traceback.print_exc()
+        sys.exit(1)
     # Ensure production settings – disable Flask debug/reloader
     app.debug = False
     # Waitress will serve the Flask app without the development server warnings

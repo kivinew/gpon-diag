@@ -47,12 +47,23 @@ def start_server():
     except Exception:
         pass
 
+    # Add virtual‑env site‑packages to PYTHONPATH so Flask, dotenv, waitress are found
+    venv_site = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..", ".venv", "Lib", "site-packages")
+    )
+    env = os.environ.copy()
+    env["PYTHONPATH"] = venv_site + os.pathsep + env.get("PYTHONPATH", "")
+
     lock_path = os.path.join(os.getenv("TEMP", "."), "gpon_server.lock")
     lock_file(lock_path)
     try:
         subprocess.Popen(
-            ["E:/DOWNLOADS/CREATIVE/PYTHON/GitHub/gpon-diag/.venv/Scripts/python.exe", "scripts/run_server.py"],
+            [
+                "E:/DOWNLOADS/CREATIVE/PYTHON/GitHub/gpon-diag/.venv/Scripts/python.exe",
+                "-m", "scripts.run_server"
+            ],
             creationflags=0x08000000,
+            env=env,
             stdout=open(os.path.join("data", "logs", "server.log"), "a", encoding="utf-8"),
             stderr=subprocess.STDOUT,
         )
