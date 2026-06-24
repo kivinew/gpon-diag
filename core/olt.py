@@ -93,23 +93,26 @@ class OltConnection:
             raise
 
     def get_olt_info(self) -> dict:
-        """Get OLT model, uptime, and software version."""
-        import importlib.util
-        _spec = importlib.util.spec_from_file_location("file_lock", "hermes-lockutils/file_lock.py")
-        _mod = importlib.util.module_from_spec(_spec)
-        _spec.loader.exec_module(_mod)
-        lock_file = _mod.lock_file
-        unlock_file = _mod.unlock_file
+        """Get OLT model, uptime, and software version. Safe fallback on any error."""
+        # Capture current state to restore later
+        try:
+            output = self.send_command("display version", max_more=1)
+            # Model: "Huawei Integrated Access Software (MA5608T)" or "MA5600" or "MA5600T"
+            model_match = re.search(r"Huawei Integrated Access Software \(MA(\d+)", output, re.I)
+            if not model_match:
+                model_match = re.search(r"\bMA(\d{4})[T]?\b", output)
+            # Version patterns - look for "Version: Vxxx" or similar
+            version_match = re.search(r"(?:Version|VRN)\s*:\s*([^\s,\n]+)", output)
+            # Uptime patterns - varies by firmware
+            uptime_match = re.search(r"(?:Uptime|Device running time)\s*:\s*([\d\w\s:-]+)", output)
 
-        output = self.send_command("display version", max_more=-1)
-        model_match = re.search(r"Huawei\s+MA(\d+)", output)
-        version_match = re.search(r"Version\s*:\s*([^,\n]+)", output)
-        uptime_match = re.search(r"Uptime\s*:\s*([\d\w\s:-]+)", output)
-        return {
-            "model": f"MA{model_match.group(1)}" if model_match else "",
-            "uptime": uptime_match.group(1).strip() if uptime_match else "",
-            "version": version_match.group(1).strip() if version_match else "",
-        }
+            model = f"MA{model_match.group(1)}" if model_match else ""
+            uptime = uptime_match.group(1).strip() if uptime_match else ""
+            version = version_match.group(1).strip() if version_match else ""
+        except Exception as e:
+            logger.warning(f"Failed to get OLT info: {e}")
+            model = uptime = version = ""
+        return {"model": model, "uptime": uptime, "version": version}
 
     def disconnect(self):
         if self._sock:

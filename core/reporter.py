@@ -7,15 +7,15 @@ import os
 from datetime import datetime
 from core.report import DiagnosisReport
 
-# Load file_lock from hermes-lockutils (hyphenated directory)
-_spec = importlib.util.spec_from_file_location("file_lock", "hermes-lockutils/file_lock.py")
-_file_lock = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(_file_lock)
-lock_file = _file_lock.lock_file
-unlock_file = _file_lock.unlock_file
-FileLockError = _file_lock.FileLockError
-
 logger = logging.getLogger(__name__)
+
+
+def _get_lock_functions():
+    """Lazy-load file_lock functions to avoid import issues."""
+    _spec = importlib.util.spec_from_file_location("file_lock", "hermes-lockutils/file_lock.py")
+    _mod = importlib.util.module_from_spec(_spec)
+    _spec.loader.exec_module(_mod)
+    return _mod.lock_file, _mod.unlock_file
 
 
 def save_report(report: DiagnosisReport, reports_dir: str = "data/reports") -> str:
@@ -25,6 +25,7 @@ def save_report(report: DiagnosisReport, reports_dir: str = "data/reports") -> s
         ont_safe = report.metrics.address.replace("/", "_")
         filename = f"{timestamp}_{ont_safe}.json"
         filepath = os.path.join(reports_dir, filename)
+        lock_file, unlock_file = _get_lock_functions()
         lock_file(reports_dir)
         try:
             with open(filepath, "w", encoding="utf-8") as f:
@@ -45,6 +46,7 @@ def save_text_report(report: DiagnosisReport, reports_dir: str = "data/reports")
         ont_safe = report.metrics.address.replace("/", "_")
         filename = f"{timestamp}_{ont_safe}.txt"
         filepath = os.path.join(reports_dir, filename)
+        lock_file, unlock_file = _get_lock_functions()
         lock_file(reports_dir)
         try:
             with open(filepath, "w", encoding="utf-8") as f:

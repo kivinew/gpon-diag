@@ -185,7 +185,7 @@ Names with non-alphanumeric chars are sanitized (e.g., `OLT-17.232` → `17_232`
 
 ## File Locking (hermes-lockutils)
 
-Integrated via `core/reporter.py` using the `FileLock` skill for thread-safe concurrent report writes.
+Integrated via `core/reporter.py` and `core/olt.py` using the `FileLock` skill for thread-safe concurrent operations.
 
 ### When to Use
 
@@ -206,40 +206,21 @@ Integrated via `core/reporter.py` using the `FileLock` skill for thread-safe con
 The `reporter.py` module automatically locks the `reports_dir` when saving:
 
 ```python
-# In core/reporter.py - already integrated
+# In core/reporter.py
 lock_file(reports_dir)
 try:
     with open(filepath, "w", encoding="utf-8") as f:
-        json.dump(report.to_dict(), f, ensure_ascii=False, indent=2)
+        f.write(report.to_text())
 finally:
     unlock_file(reports_dir)
 ```
 
-### Standalone Usage
+### Key Features Added
 
-**Bash:**
-```bash
-source hermes-lockutils/file_lock.sh
-lock_file "/path/to/shared/data.json"
-trap 'unlock_file "/path/to/shared/data.json"' EXIT
-# Safe file operations here
-```
-
-**Python:**
-```python
-import importlib.util
-_spec = importlib.util.spec_from_file_location("file_lock", "hermes-lockutils/file_lock.py")
-_lock_module = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(_lock_module)
-lock_file = _lock_module.lock_file
-unlock_file = _lock_module.unlock_file
-
-lock_file("/path/to/shared/data.json")
-try:
-    # Safe file operations here
-finally:
-    unlock_file("/path/to/shared/data.json")
-```
+- **OLT uptime tracking**: `olt_uptime` field added to `OntMetrics` and displayed in reports
+- **Rule for long ONT uptime**: `rule_long_uptime` recommends reboot if uptime > 5 days with message "Необходима перезагрузка терминала."
+- **OLT model/version detection**: `get_olt_info()` parses `display version` output with multiple regex patterns for compatibility
+- **File locking**: Integrated via `_get_lock_functions()` lazy loader in `reporter.py` to prevent race conditions
 
 ### Key Considerations
 
