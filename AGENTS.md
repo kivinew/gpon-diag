@@ -182,3 +182,69 @@ Names with non-alphanumeric chars are sanitized (e.g., `OLT-17.232` → `17_232`
 - Reports saved to `data/reports/` as `{timestamp}_{ont_address}.json` or `.txt`
 - MAC OUI database at `data/oui.txt` for vendor lookup
 - Config at `config.yaml` (OLT list + thresholds + settings)
+
+## File Locking (hermes-lockutils)
+
+Integrated via `core/reporter.py` using the `FileLock` skill for thread-safe concurrent report writes.
+
+### When to Use
+
+- Multiple processes writing to the same report directory
+- Concurrent access to shared state (JSON, YAML, logs)
+- Preventing data corruption during parallel diagnostic runs
+
+### Components
+
+| File | Purpose |
+|------|---------|
+| `hermes-lockutils/file_lock.sh` | Bash lock functions (uses `mkdir` atomicity) |
+| `hermes-lockutils/file_lock.py` | Python lock functions (imported via importlib) |
+| `hermes-lockutils/SKILL.md` | Documentation for the locking skill |
+
+### Usage in This Project
+
+The `reporter.py` module automatically locks the `reports_dir` when saving:
+
+```python
+# In core/reporter.py - already integrated
+lock_file(reports_dir)
+try:
+    with open(filepath, "w", encoding="utf-8") as f:
+        json.dump(report.to_dict(), f, ensure_ascii=False, indent=2)
+finally:
+    unlock_file(reports_dir)
+```
+
+### Standalone Usage
+
+**Bash:**
+```bash
+source hermes-lockutils/file_lock.sh
+lock_file "/path/to/shared/data.json"
+trap 'unlock_file "/path/to/shared/data.json"' EXIT
+# Safe file operations here
+```
+
+**Python:**
+```python
+import importlib.util
+_spec = importlib.util.spec_from_file_location("file_lock", "hermes-lockutils/file_lock.py")
+_lock_module = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_lock_module)
+lock_file = _lock_module.lock_file
+unlock_file = _lock_module.unlock_file
+
+lock_file("/path/to/shared/data.json")
+try:
+    # Safe file operations here
+finally:
+    unlock_file("/path/to/shared/data.json")
+```
+
+### Key Considerations
+
+1. Locks use `<file>.lock` directory created atomically
+2. Always use `trap`/`try-finally` for guaranteed cleanup
+3. Default timeout: 30 seconds (prevents deadlock)
+4. Stale locks: check lock directory mtime if processes crash
+5. Not safe on NFS - use local filesystem or distributed lock service
