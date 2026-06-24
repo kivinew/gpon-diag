@@ -14,10 +14,9 @@ def is_server_running():
             "tasklist",
             "/FI",
             "IMAGENAME eq python.exe",
-            "/FI",
-            "WINDOWTITLE eq run_server*",
         ], text=True)
-        return "run_server.py" in out
+        # Look for the module name used to start the server
+        return "scripts.run_server" in out or "run_server.py" in out
     except subprocess.CalledProcessError:
         return False
 
@@ -47,20 +46,22 @@ def start_server():
     except Exception:
         pass
 
-    # Add virtual‑env site‑packages to PYTHONPATH so Flask, dotenv, waitress are found
+    # Add project root and virtual‑env site‑packages to PYTHONPATH so Flask, dotenv, waitress and local modules are found
     venv_site = os.path.abspath(
         os.path.join(os.path.dirname(__file__), "..", ".venv", "Lib", "site-packages")
     )
+    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     env = os.environ.copy()
-    env["PYTHONPATH"] = venv_site + os.pathsep + env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = project_root + os.pathsep + venv_site + os.pathsep + env.get("PYTHONPATH", "")
 
     lock_path = os.path.join(os.getenv("TEMP", "."), "gpon_server.lock")
     lock_file(lock_path)
     try:
+        print('PYTHONPATH:', env.get('PYTHONPATH',''))
         subprocess.Popen(
             [
                 "E:/DOWNLOADS/CREATIVE/PYTHON/GitHub/gpon-diag/.venv/Scripts/python.exe",
-                "-m", "scripts.run_server"
+                "-u", "-m", "scripts.run_server"
             ],
             creationflags=0x08000000,
             env=env,

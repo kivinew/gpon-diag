@@ -18,9 +18,12 @@ import re
 import sys
 import yaml
 from datetime import datetime, timezone, timedelta
-from dotenv import load_dotenv
-
-load_dotenv()
+# Optional dotenv loading – ignore if not installed
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except Exception:
+    pass
 
 TZ_LOCAL = timezone(timedelta(hours=7))
 

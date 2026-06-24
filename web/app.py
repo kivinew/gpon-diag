@@ -167,6 +167,11 @@ def index():
     history = Diagnosis.query.order_by(Diagnosis.created_at.desc()).limit(20).all()
     return render_template("index.html", olts=olts, history=history)
 
+# Simple health‑check endpoint for diagnostics
+@app.route("/ping", methods=["GET"])
+def ping():
+    return {"status": "ok"}
+
 if __name__ == "__main__":
     # Production server is started via scripts/run_server.py
     pass

@@ -7,18 +7,29 @@ sys.path.append(PROJECT_ROOT)
 VENV_SITE = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".venv", "Lib", "site-packages"))
 sys.path.append(VENV_SITE)
 
-if __name__ == "__main__":
-    # Load environment variables (config.yaml may rely on .env)
+# Optional dotenv loading – ignore if not installed
+try:
     from dotenv import load_dotenv
-    load_dotenv(os.path.join(PROJECT_ROOT, ".env"))
+    load_dotenv()
+except Exception:
+    pass
+
+if __name__ == "__main__":
+    # Import Flask app
     try:
-        from web import app  # import Flask app
-    except Exception as exc:
+        from web.app import app as flask_app
+        app = flask_app
+    except Exception:
         import traceback, sys
         traceback.print_exc()
         sys.exit(1)
-    # Ensure production settings – disable Flask debug/reloader
+    # Production settings
     app.debug = False
-    # Waitress will serve the Flask app without the development server warnings
-    from waitress import serve
-    serve(app, host="0.0.0.0", port=5000)
+    # Start server with Waitress if available
+    try:
+        from waitress import serve
+        serve(app, host="0.0.0.0", port=5000)
+    except Exception:
+        import traceback, sys
+        traceback.print_exc()
+        sys.exit(1)
