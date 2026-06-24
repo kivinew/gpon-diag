@@ -17,7 +17,7 @@ def check_logs():
     log_path = os.path.join("data", "logs", "server.log")
     if not os.path.exists(log_path):
         return "Log file not found"
-    with open(log_path, "r", encoding="utf-8") as f:
+    with open(log_path, "r", encoding="utf-8", errors="ignore") as f:
         lines = f.readlines()[-20:]
     errors = [l for l in lines if "ERROR" in l or "Traceback" in l]
     return "\n".join(errors) if errors else "No recent errors"
@@ -27,7 +27,7 @@ def start_server():
     lock_file(lock_path)
     try:
         subprocess.Popen(
-            ["uv", "run", "python", "-m", "web.app"],
+            ["E:/DOWNLOADS/CREATIVE/PYTHON/GitHub/gpon-diag/.venv/Scripts/python.exe", "-m", "web.app", "--no-reload"],
             creationflags=0x08000000,
             stdout=open(os.path.join("data", "logs", "server.log"), "a", encoding="utf-8"),
             stderr=subprocess.STDOUT,

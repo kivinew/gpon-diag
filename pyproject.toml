@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "gpon-diag"
 version = "0.1.0"
@@ -9,5 +13,8 @@ dependencies = [
     "telnetlib3>=4.0.4",
     "python-dotenv>=1.0.0",
     "Flask>=3.0.0",
-    "Flask_SQLAlchemy>=3.0.0",
+    "Flask-SQLAlchemy>=3.0.0",
 ]
+
+[tool.setuptools]
+packages = ["web", "core", "data", "interfaces"]

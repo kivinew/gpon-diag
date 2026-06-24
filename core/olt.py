@@ -51,6 +51,8 @@ def _strip_iac(data):
 class OltConnection:
     """Manages a single telnet connection to one OLT using synchronous sockets."""
 
+    _banner_cache = ""  # Class-level cache for model info
+
     def __init__(self, host: str = "", port: int = 23,
                  username: str = "", password: str = "",
                  timeout: int = 15):
@@ -69,8 +71,9 @@ class OltConnection:
             self._sock.connect((self.host, self.port))
             # Accept telnet negotiations
             self._sock.sendall(b"\xff\xfb\x01\xff\xfb\x03")
-            # Read banner and login prompts
-            self._read_to_prompt(2)
+            # Read banner and login prompts, cache banner for model detection
+            banner = self._read_to_prompt(2)
+            OltConnection._banner_cache = banner
             self._write(self.username + "\r")
             time.sleep(1)
             self._read_to_prompt(2)
@@ -93,25 +96,16 @@ class OltConnection:
             raise
 
     def get_olt_info(self) -> dict:
-        """Get OLT model, uptime, and software version. Safe fallback on any error."""
-        # Capture current state to restore later
+        """Get OLT model, uptime, and software version from banner cache."""
+        model = uptime = version = ""
         try:
-            output = self.send_command("display version", max_more=1)
-            # Model: "Huawei Integrated Access Software (MA5608T)" or "MA5600" or "MA5600T"
-            model_match = re.search(r"Huawei Integrated Access Software \(MA(\d+)", output, re.I)
-            if not model_match:
-                model_match = re.search(r"\bMA(\d{4})[T]?\b", output)
-            # Version patterns - look for "Version: Vxxx" or similar
-            version_match = re.search(r"(?:Version|VRN)\s*:\s*([^\s,\n]+)", output)
-            # Uptime patterns - varies by firmware
-            uptime_match = re.search(r"(?:Uptime|Device running time)\s*:\s*([\d\w\s:-]+)", output)
-
-            model = f"MA{model_match.group(1)}" if model_match else ""
-            uptime = uptime_match.group(1).strip() if uptime_match else ""
-            version = version_match.group(1).strip() if version_match else ""
-        except Exception as e:
-            logger.warning(f"Failed to get OLT info: {e}")
-            model = uptime = version = ""
+            banner = OltConnection._banner_cache
+            # Model: "Huawei Integrated Access Software (MA5608T)"
+            model_match = re.search(r"\bMA(\d{4})T?\b", banner, re.I)
+            if model_match:
+                model = f"MA{model_match.group(1)}"
+        except Exception:
+            pass
         return {"model": model, "uptime": uptime, "version": version}
 
     def disconnect(self):
