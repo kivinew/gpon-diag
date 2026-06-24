@@ -344,7 +344,7 @@ def rule_long_uptime(metrics, t):
         return DiagnosisProblem(
             "info", "maintenance",
             f"Длительная работа без перезагрузки: {metrics.online_duration}",
-            "Необходима перезагрузка оптического терминала."
+            "Необходима перезагрузка терминала."
         )
     return None
 

@@ -93,7 +93,23 @@ class OltConnection:
             raise
 
     def get_olt_info(self) -> dict:
-        return {"model": "", "uptime": "", "version": ""}
+        """Get OLT model, uptime, and software version."""
+        import importlib.util
+        _spec = importlib.util.spec_from_file_location("file_lock", "hermes-lockutils/file_lock.py")
+        _mod = importlib.util.module_from_spec(_spec)
+        _spec.loader.exec_module(_mod)
+        lock_file = _mod.lock_file
+        unlock_file = _mod.unlock_file
+
+        output = self.send_command("display version", max_more=-1)
+        model_match = re.search(r"Huawei\s+MA(\d+)", output)
+        version_match = re.search(r"Version\s*:\s*([^,\n]+)", output)
+        uptime_match = re.search(r"Uptime\s*:\s*([\d\w\s:-]+)", output)
+        return {
+            "model": f"MA{model_match.group(1)}" if model_match else "",
+            "uptime": uptime_match.group(1).strip() if uptime_match else "",
+            "version": version_match.group(1).strip() if version_match else "",
+        }
 
     def disconnect(self):
         if self._sock:

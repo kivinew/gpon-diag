@@ -153,6 +153,8 @@ def run_diagnosis(input_data, olt_config, thresholds, allow_actions=True, log=No
     if on_olt_info:
         on_olt_info(olt_info)
 
+    olt_uptime = olt_info.get("uptime", "")
+
     if input_data["type"] == "serial":
         _log(f"Поиск ONT по SN {input_data['value']}...")
         loc = olt.find_ont_by_sn(input_data["value"])
@@ -186,6 +188,7 @@ def run_diagnosis(input_data, olt_config, thresholds, allow_actions=True, log=No
     metrics.slot = input_data["slot"]
     metrics.port = input_data["port"]
     metrics.ont_id = input_data["ont_id"]
+    metrics.olt_uptime = olt_uptime
 
     if "ont_info" in raw_data: parse_ont_info(raw_data["ont_info"], metrics)
     if "ont_version" in raw_data: parse_ont_version(raw_data["ont_version"], metrics)

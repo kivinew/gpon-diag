@@ -34,6 +34,7 @@ class OntMetrics:
     model: str = ""
     version: str = ""
     distance_m: int = -1
+    olt_uptime: str = ""  # OLT uptime from display version
     ont_rx_power: float = 999.0
     olt_rx_power: float = 999.0
     ont_tx_power: float = 999.0
