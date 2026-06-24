@@ -6,10 +6,18 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "h
 from file_lock import lock_file, unlock_file
 
 def is_server_running():
-    # Look for python processes with flask app title
+    """Check if the server process started via run_server.py is already running.
+    This avoids detecting the Flask dev server which may spawn multiple processes.
+    """
     try:
-        out = subprocess.check_output(["tasklist", "/FI", "IMAGENAME eq python.exe", "/FI", "WINDOWTITLE eq Flask*"], text=True)
-        return "python.exe" in out
+        out = subprocess.check_output([
+            "tasklist",
+            "/FI",
+            "IMAGENAME eq python.exe",
+            "/FI",
+            "WINDOWTITLE eq run_server*",
+        ], text=True)
+        return "run_server.py" in out
     except subprocess.CalledProcessError:
         return False
 
@@ -23,11 +31,27 @@ def check_logs():
     return "\n".join(errors) if errors else "No recent errors"
 
 def start_server():
+    """Start the production server via Waitress.
+    Ensures any leftover Flask dev server processes are terminated before launch.
+    """
+    # Terminate any lingering Flask dev server processes (identified by window title)
+    try:
+        subprocess.run([
+            "taskkill",
+            "/FI",
+            "IMAGENAME eq python.exe",
+            "/FI",
+            "WINDOWTITLE eq Flask*",
+            "/F",
+        ], capture_output=True, text=True)
+    except Exception:
+        pass
+
     lock_path = os.path.join(os.getenv("TEMP", "."), "gpon_server.lock")
     lock_file(lock_path)
     try:
         subprocess.Popen(
-            ["E:/DOWNLOADS/CREATIVE/PYTHON/GitHub/gpon-diag/.venv/Scripts/python.exe", "-m", "web.app", "--no-reload"],
+            ["E:/DOWNLOADS/CREATIVE/PYTHON/GitHub/gpon-diag/.venv/Scripts/python.exe", "scripts/run_server.py"],
             creationflags=0x08000000,
             stdout=open(os.path.join("data", "logs", "server.log"), "a", encoding="utf-8"),
             stderr=subprocess.STDOUT,
