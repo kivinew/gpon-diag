@@ -19,6 +19,7 @@ from core.olt import OntNotFoundError
 from core.thresholds import Thresholds
 
 app = Flask(__name__)
+app.debug = False
 app.config["SECRET_KEY"] = os.urandom(24)
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data", "diagnoses.db")
 app.config["SQLALCHEMY_DATABASE_URI"] = f"sqlite:///{DB_PATH}"
@@ -167,5 +168,5 @@ def index():
     return render_template("index.html", olts=olts, history=history)
 
 if __name__ == "__main__":
-    from waitress import serve
-    serve(app, host="0.0.0.0", port=5000)
+    # Production server is started via scripts/run_server.py
+    pass
