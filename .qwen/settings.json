@@ -3,5 +3,6 @@
     "allow": [
       "Read(//home/sandbox/**)"
     ]
-  }
+  },
+  "$version": 4
 }
