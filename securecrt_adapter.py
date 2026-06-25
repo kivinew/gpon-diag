@@ -77,7 +77,10 @@ def run_from_securecrt(crt):
                 "port": tokens[2], "ont_id": tokens[3],
             }
         elif re.match(r"^(fl_|kes)?\d{5,16}$", buffer_text):
-            input_data = {"type": "description", "value": buffer_text}
+            value = buffer_text
+            if buffer_text.isdigit():
+                value = f"fl_{buffer_text}"
+            input_data = {"type": "description", "value": value}
 
     if not input_data:
         crt.Dialog.MessageBox(

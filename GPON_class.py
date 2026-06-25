@@ -84,7 +84,11 @@ class GPON:
 
     @classmethod
     def from_description(cls, description: str):
-        output = cls._send_command_and_read(COMMANDS["info_by_description"].format(description=description))
+        # Добавляем префикс fl_ если description - это цифры
+        value = description
+        if description.isdigit() and 5 <= len(description) <= 16:
+            value = f"fl_{description}"
+        output = cls._send_command_and_read(COMMANDS["info_by_description"].format(description=value))
         match = re.search(PATTERNS["ont_by_desc"], output)
         if not match:
             raise GPONError(f"ONT с описанием {description} не найден")

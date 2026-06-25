@@ -333,8 +333,16 @@ class OltConnection:
         return self._parse_fsp(output)
 
     def find_ont_by_description(self, description):
+        # Попробовать найти с оригинальным значением
         output = self.send_command(f"display ont info by-desc {description}", max_more=0)
-        return self._parse_fsp(output)
+        result = self._parse_fsp(output)
+        if result:
+            return result
+        # Fallback: попробовать с префиксом fl_ если description - это цифры
+        if description.isdigit() and 5 <= len(description) <= 16:
+            output = self.send_command(f"display ont info by-desc fl_{description}", max_more=0)
+            return self._parse_fsp(output)
+        return None
 
     @staticmethod
     def _parse_fsp(output):

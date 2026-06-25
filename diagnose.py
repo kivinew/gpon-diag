@@ -99,6 +99,12 @@ def parse_input(buffer):
     tokens = buffer.replace("/", " ").split()
     if len(tokens) == 4 and all(t.isdigit() for t in tokens):
         return {"type": "address", "frame": tokens[0], "slot": tokens[1], "port": tokens[2], "ont_id": tokens[3]}
+    # Description: добавляем префикс fl_ если это цифры 5-16 символов
+    if re.fullmatch(r"^(fl_|kes)?\d{5,16}$", buffer) or (buffer.isdigit() and 5 <= len(buffer) <= 16):
+        value = buffer
+        if buffer.isdigit():
+            value = f"fl_{buffer}"
+        return {"type": "description", "value": value}
     return {"type": "description", "value": buffer}
 
 
