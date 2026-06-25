@@ -6,18 +6,19 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "h
 from file_lock import lock_file, unlock_file
 
 def is_server_running():
-    """Check if the server process started via run_server.py is already running.
-    This avoids detecting the Flask dev server which may spawn multiple processes.
+    """Determine if a single Waitress server is listening on port 5000.
+    Returns True only if exactly one process is listening on that port.
     """
     try:
-        out = subprocess.check_output([
-            "tasklist",
-            "/FI",
-            "IMAGENAME eq python.exe",
-        ], text=True)
-        # Look for the module name used to start the server
-        return "scripts.run_server" in out or "run_server.py" in out
-    except subprocess.CalledProcessError:
+        out = subprocess.check_output(["netstat", "-ano"], text=True)
+        pids = []
+        for line in out.splitlines():
+            if ("0.0.0.0:5000" in line or "[::]:5000" in line) and "LISTENING" in line:
+                parts = line.split()
+                pids.append(parts[-1])
+        # If exactly one PID is listening, assume it's the correct server
+        return len(pids) == 1
+    except Exception:
         return False
 
 def check_logs():
@@ -29,7 +30,39 @@ def check_logs():
     errors = [l for l in lines if "ERROR" in l or "Traceback" in l]
     return "\n".join(errors) if errors else "No recent errors"
 
+def kill_port_processes():
+    """Kill any processes listening on port 5000 (excluding the current check script)."""
+    try:
+        out = subprocess.check_output(["netstat", "-ano"], text=True)
+        for line in out.splitlines():
+            if ("0.0.0.0:5000" in line or "[::]:5000" in line) and "LISTENING" in line:
+                parts = line.split()
+                pid = parts[-1]
+                # Avoid killing this script itself
+                if pid != str(os.getpid()):
+                    subprocess.run(["taskkill", "/PID", pid, "/F"], capture_output=True)
+    except Exception:
+        pass
+
 def start_server():
+    """Start the production server via Waitress.
+    Ensures any leftover Flask dev server processes are terminated before launch.
+    """
+    # Terminate any lingering Flask dev server processes (identified by window title)
+    try:
+        subprocess.run([
+            "taskkill",
+            "/FI",
+            "IMAGENAME eq python.exe",
+            "/FI",
+            "WINDOWTITLE eq Flask*",
+            "/F",
+        ], capture_output=True, text=True)
+    except Exception:
+        pass
+    # Additionally kill any processes still listening on port 5000
+    kill_port_processes()
+
     """Start the production server via Waitress.
     Ensures any leftover Flask dev server processes are terminated before launch.
     """
