@@ -6,18 +6,15 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "h
 from file_lock import lock_file, unlock_file
 
 def is_server_running():
-    """Determine if a single Waitress server is listening on port 5000.
-    Returns True only if exactly one process is listening on that port.
+    """Check if any process is listening on port 5000.
+    Returns True when at least one LISTENING TCP socket is found.
     """
     try:
         out = subprocess.check_output(["netstat", "-ano"], text=True)
-        pids = []
         for line in out.splitlines():
             if ("0.0.0.0:5000" in line or "[::]:5000" in line) and "LISTENING" in line:
-                parts = line.split()
-                pids.append(parts[-1])
-        # If exactly one PID is listening, assume it's the correct server
-        return len(pids) == 1
+                return True
+        return False
     except Exception:
         return False
 
@@ -45,10 +42,8 @@ def kill_port_processes():
         pass
 
 def start_server():
-    """Start the production server via Waitress.
-    Ensures any leftover Flask dev server processes are terminated before launch.
-    """
-    # Terminate any lingering Flask dev server processes (identified by window title)
+    """Start the production server via Waitress, ensuring a clean environment."""
+    # Kill any lingering Flask dev servers and any process still listening on port 5000
     try:
         subprocess.run([
             "taskkill",
@@ -60,37 +55,16 @@ def start_server():
         ], capture_output=True, text=True)
     except Exception:
         pass
-    # Additionally kill any processes still listening on port 5000
     kill_port_processes()
 
-    """Start the production server via Waitress.
-    Ensures any leftover Flask dev server processes are terminated before launch.
-    """
-    # Terminate any lingering Flask dev server processes (identified by window title)
-    try:
-        subprocess.run([
-            "taskkill",
-            "/FI",
-            "IMAGENAME eq python.exe",
-            "/FI",
-            "WINDOWTITLE eq Flask*",
-            "/F",
-        ], capture_output=True, text=True)
-    except Exception:
-        pass
-
-    # Add project root and virtual‑env site‑packages to PYTHONPATH so Flask, dotenv, waitress and local modules are found
-    venv_site = os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "..", ".venv", "Lib", "site-packages")
-    )
+    # Launch server using the virtual‑env python interpreter with proper PYTHONPATH
+    venv_site = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".venv", "Lib", "site-packages"))
     project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     env = os.environ.copy()
     env["PYTHONPATH"] = project_root + os.pathsep + venv_site + os.pathsep + env.get("PYTHONPATH", "")
-
     lock_path = os.path.join(os.getenv("TEMP", "."), "gpon_server.lock")
     lock_file(lock_path)
     try:
-        print('PYTHONPATH:', env.get('PYTHONPATH',''))
         subprocess.Popen(
             [
                 "E:/DOWNLOADS/CREATIVE/PYTHON/GitHub/gpon-diag/.venv/Scripts/python.exe",
