@@ -5,7 +5,10 @@ import json
 import sys
 import queue
 import threading
+import logging
 from datetime import datetime, timezone, timedelta
+
+logger = logging.getLogger(__name__)
 
 TZ_LOCAL = timezone(timedelta(hours=7))
 
@@ -103,7 +106,7 @@ def api_diagnose():
     def worker():
         with app.app_context():
             try:
-                # First, search for historical results
+                # First, search for historical results (in try block to avoid breaking diagnosis)
                 input_data = parse_input(query)
                 ont_address = None
                 search_terms = []
@@ -118,30 +121,36 @@ def api_diagnose():
 
                 # Query history before running diagnosis
                 if search_terms:
-                    conditions = []
-                    for term in search_terms:
-                        conditions.append(Diagnosis.ont_address.contains(term))
-                        conditions.append(Diagnosis.input_value.contains(term))
-                    history_records = Diagnosis.query.filter(
-                        db.or_(*conditions)
-                    ).order_by(Diagnosis.created_at.desc()).limit(10).all()
+                    try:
+                        conditions = []
+                        for term in search_terms:
+                            conditions.append(Diagnosis.ont_address.contains(term))
+                            conditions.append(Diagnosis.input_value.contains(term))
+                        if conditions:
+                            history_records = Diagnosis.query.filter(
+                                db.or_(*conditions)
+                            ).order_by(Diagnosis.created_at.desc()).limit(10).all()
+                        else:
+                            history_records = []
 
-                    history_results = []
-                    for record in history_records:
-                        try:
-                            report_data = json.loads(record.report_json) if record.report_json else {}
-                        except (json.JSONDecodeError, TypeError):
-                            report_data = {}
-                        history_results.append({
-                            "id": record.id,
-                            "created_at": record.created_at.strftime("%d.%m.%Y %H:%M"),
-                            "olt_name": record.olt_name,
-                            "ont_address": record.ont_address,
-                            "report": report_data,
-                        })
+                        history_results = []
+                        for record in history_records:
+                            try:
+                                report_data = json.loads(record.report_json) if record.report_json else {}
+                            except (json.JSONDecodeError, TypeError):
+                                report_data = {}
+                            history_results.append({
+                                "id": record.id,
+                                "created_at": record.created_at.strftime("%d.%m.%Y %H:%M"),
+                                "olt_name": record.olt_name,
+                                "ont_address": record.ont_address,
+                                "report": report_data,
+                            })
 
-                    if history_results:
-                        log_q.put({"type": "history", "history": history_results})
+                        if history_results:
+                            log_q.put({"type": "history", "history": history_results})
+                    except Exception as hist_err:
+                        logger.warning(f"History search failed: {hist_err}")
 
                 thresholds = build_thresholds(config)
 
@@ -176,7 +185,9 @@ def api_diagnose():
                 msg = f"На головной станции {olt_label} ({olt_ip}) терминал {query} не обнаружен."
                 log_q.put({"type": "error", "message": msg})
             except Exception as exc:
-                log_q.put({"type": "error", "message": str(exc)})
+                import traceback
+                logger.exception(f"Diagnosis error for {query}: {exc}")
+                log_q.put({"type": "error", "message": f"{exc}\n{traceback.format_exc()}"})
             finally:
                 log_q.put(None)
 

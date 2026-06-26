@@ -6,7 +6,8 @@
       "Bash(qwen *)",
       "Bash(netstat *)",
       "Bash(findstr *)",
-      "Bash(curl *)"
+      "Bash(curl *)",
+      "Bash(python *)"
     ]
   },
   "$version": 4
