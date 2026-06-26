@@ -96,16 +96,38 @@ class OltConnection:
             raise
 
     def get_olt_info(self) -> dict:
-        """Get OLT model, uptime, and software version from banner cache."""
+        """Get OLT model, uptime, and software version.
+        The method extracts the model from the cached banner and, if possible,
+        queries the OLT for version and uptime using the appropriate CLI commands.
+        """
         model = uptime = version = ""
+        # --------- Model extraction from banner ---------
         try:
             banner = OltConnection._banner_cache
-            # Model: "Huawei Integrated Access Software (MA5608T)"
+            # Typical banner contains: "Huawei Integrated Access Software (MA5608T)"
             model_match = re.search(r"\bMA(\d{4})T?\b", banner, re.I)
             if model_match:
                 model = f"MA{model_match.group(1)}"
         except Exception:
-            pass
+            logger.debug("Failed to parse model from banner", exc_info=True)
+        # --------- Version extraction ---------
+        try:
+            version_output = self.send_command("display version", max_more=0)
+            # Look for a line like: "Software Version : V200R019C00"
+            version_match = re.search(r"Version\s*[:]?\s*([\w\.]+)", version_output, re.I)
+            if version_match:
+                version = version_match.group(1).strip()
+        except Exception:
+            logger.debug("Failed to retrieve OLT version", exc_info=True)
+        # --------- Uptime extraction ---------
+        try:
+            uptime_output = self.send_command("display uptime", max_more=0)
+            # Typical format: "Uptime is 5 days, 3 hours, 12 minutes"
+            uptime_match = re.search(r"Uptime\s*[:]?\s*([\w ,]+)", uptime_output, re.I)
+            if uptime_match:
+                uptime = uptime_match.group(1).strip()
+        except Exception:
+            logger.debug("Failed to retrieve OLT uptime", exc_info=True)
         return {"model": model, "uptime": uptime, "version": version}
 
     def disconnect(self):
@@ -346,10 +368,26 @@ class OltConnection:
 
     @staticmethod
     def _parse_fsp(output):
-        fsp = re.search(r"F/S/P\s*:\s*([\d/]+)", output)
-        oid = re.search(r"ONT-ID\s*:\s*(\d+)", output)
-        if fsp and oid:
-            parts = fsp.group(1).split("/")
-            if len(parts) == 3:
-                return {"frame": parts[0], "slot": parts[1], "port": parts[2], "ont_id": oid.group(1)}
+        # Huawei MA5600 format:
+        #   F/S/P   ONT-ID   Description
+        #   0/ 0/6       0   fl_102693
+        # Also supports format with colons from other variants
+        #   F/S/P                   : 0/1/3
+        #   ONT-ID                  : 9
+        lines = output.strip().split('\n')
+        for line in lines:
+            # Try format: "0/ 0/6 0 fl_102693" (table format with spaces inside F/S/P)
+            match = re.match(r'\s*(\d+)\s*/\s*\d+\s*/\s*\d+\s+(\d+)', line)
+            if match:
+                # Extract full F/S/P from line and parse
+                fsp_match = re.match(r'\s*(\d+)\s*/\s*(\d+)\s*/\s*(\d+)', line)
+                if fsp_match:
+                    return {"frame": fsp_match.group(1), "slot": fsp_match.group(2), "port": fsp_match.group(3), "ont_id": match.group(1)}
+            # Try format with colons: "F/S/P : 0/1/3" and "ONT-ID : 9"
+            fsp = re.search(r"F/S/P\s*:\s*([\d/]+)", line)
+            oid = re.search(r"ONT-ID\s*:\s*(\d+)", line)
+            if fsp and oid:
+                parts = fsp.group(1).split("/")
+                if len(parts) == 3:
+                    return {"frame": parts[0], "slot": parts[1], "port": parts[2], "ont_id": oid.group(1)}
         return None
