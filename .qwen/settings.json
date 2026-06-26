@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Read(//home/sandbox/**)"
+      "Read(//home/sandbox/**)",
+      "Bash(uv *)"
     ]
   },
   "$version": 4
