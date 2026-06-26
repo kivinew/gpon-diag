@@ -35,13 +35,21 @@ def diagnose_ont(ont_address, olt_config, thresholds):
         
         gpon = _gc.GPON()
         
+        # Try to locate ONT by serial number, description or raw address.
+        # Original code handled only specific serial patterns. Extend to accept any
+        # alphanumeric identifier as a possible serial number.
         if re.fullmatch(r"(?i)(48575443|hwtc)[\da-f]{8}", ont_address.strip()):
             ont = gpon.find_by_sn(ont_address.strip().upper())
         elif "/" in ont_address:
             parts = ont_address.replace("/", " ").split()
             ont = _gc.Ont(parts)
         else:
-            ont = gpon.find_by_description(ont_address.strip())
+            # Fallback: try serial lookup first, then description search.
+            candidate = ont_address.strip()
+            ont = gpon.find_by_sn(candidate.upper())
+            if ont is None:
+                ont = gpon.find_by_description(candidate)
+        
         
         if ont is None:
             now = datetime.now().isoformat()
@@ -53,7 +61,8 @@ def diagnose_ont(ont_address, olt_config, thresholds):
         gpon.get_ont_info()
         
         metrics = OntMetrics()
-        metrics.address = str(ont)
+        # Preserve the original ONT identifier for the report
+        metrics.address = ont_address
         metrics.frame = ont.frame
         metrics.slot = ont.slot
         metrics.port = ont.port

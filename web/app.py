@@ -103,7 +103,46 @@ def api_diagnose():
     def worker():
         with app.app_context():
             try:
+                # First, search for historical results
                 input_data = parse_input(query)
+                ont_address = None
+                search_terms = []
+
+                if input_data["type"] == "address":
+                    ont_address = f"{input_data['frame']}/{input_data['slot']}/{input_data['port']}/{input_data['ont_id']}"
+                    search_terms.append(ont_address)
+                elif input_data["type"] == "serial":
+                    search_terms.append(input_data["value"])
+                elif input_data["type"] == "description":
+                    search_terms.append(input_data["value"])
+
+                # Query history before running diagnosis
+                if search_terms:
+                    conditions = []
+                    for term in search_terms:
+                        conditions.append(Diagnosis.ont_address.contains(term))
+                        conditions.append(Diagnosis.input_value.contains(term))
+                    history_records = Diagnosis.query.filter(
+                        db.or_(*conditions)
+                    ).order_by(Diagnosis.created_at.desc()).limit(10).all()
+
+                    history_results = []
+                    for record in history_records:
+                        try:
+                            report_data = json.loads(record.report_json) if record.report_json else {}
+                        except (json.JSONDecodeError, TypeError):
+                            report_data = {}
+                        history_results.append({
+                            "id": record.id,
+                            "created_at": record.created_at.strftime("%d.%m.%Y %H:%M"),
+                            "olt_name": record.olt_name,
+                            "ont_address": record.ont_address,
+                            "report": report_data,
+                        })
+
+                    if history_results:
+                        log_q.put({"type": "history", "history": history_results})
+
                 thresholds = build_thresholds(config)
 
                 def on_olt_info(info):
@@ -172,6 +211,44 @@ def index():
 @app.route("/ping", methods=["GET"])
 def ping():
     return {"status": "ok"}
+
+@app.route("/api/history", methods=["GET"])
+def api_history():
+    """Search historical diagnosis results by ONT address, serial, or description."""
+    query = request.args.get("q", "").strip()
+    limit = request.args.get("limit", 10, type=int)
+
+    if not query:
+        return {"error": "Введите запрос для поиска."}, 400
+
+    # Search by ont_address, serial, or description
+    history_records = Diagnosis.query.filter(
+        db.or_(
+            Diagnosis.ont_address.contains(query),
+            Diagnosis.input_value.contains(query),
+        )
+    ).order_by(Diagnosis.created_at.desc()).limit(limit).all()
+
+    results = []
+    for record in history_records:
+        try:
+            report_data = json.loads(record.report_json) if record.report_json else {}
+        except (json.JSONDecodeError, TypeError):
+            report_data = {}
+        results.append({
+            "id": record.id,
+            "timestamp": record.timestamp,
+            "created_at": record.created_at.strftime("%d.%m.%Y %H:%M"),
+            "olt_name": record.olt_name,
+            "olt_host": record.olt_host,
+            "ont_address": record.ont_address,
+            "input_type": record.input_type,
+            "input_value": record.input_value,
+            "report": report_data,
+            "is_online": report_data.get("is_online", True),
+        })
+
+    return {"history": results}
 
 if __name__ == "__main__":
     # Production server is started via scripts/run_server.py

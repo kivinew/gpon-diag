@@ -533,6 +533,127 @@ body {
     font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
 }
 
+/* --- History During Diagnosis --- */
+.history-during-diagnosis {
+    background: rgba(15,23,42,0.6);
+    border: 1px solid rgba(56,189,248,0.12);
+    border-radius: 16px;
+    padding: 24px 28px;
+    max-width: 860px;
+    margin: 0 auto 20px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+    backdrop-filter: blur(8px);
+}
+
+.history-during-diagnosis .result-header h1 {
+    font-size: 18px;
+    color: #94a3b8;
+}
+
+.history-items {
+    margin-top: 16px;
+}
+
+.history-item {
+    border: 1px solid rgba(56,189,248,0.08);
+    border-radius: 10px;
+    margin-bottom: 12px;
+    overflow: hidden;
+}
+
+.history-item-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    background: rgba(30,41,59,0.6);
+    cursor: pointer;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.history-item-header:hover {
+    background: rgba(56,189,248,0.08);
+}
+
+.history-item-title {
+    color: #e2e8f0;
+    font-size: 14px;
+}
+
+.history-address {
+    color: #64748b;
+    font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+}
+
+.history-date {
+    color: #64748b;
+    font-size: 12px;
+    margin-left: auto;
+}
+
+.history-toggle {
+    color: #94a3b8;
+    font-size: 12px;
+    transition: transform 0.2s;
+}
+
+.history-item-summary {
+    padding: 10px 16px;
+    font-size: 13px;
+    color: #94a3b8;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.history-item-summary span {
+    background: rgba(56,189,248,0.06);
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+}
+
+.history-item-details {
+    padding: 16px;
+    background: rgba(15,23,42,0.9);
+    font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+    font-size: 12px;
+    line-height: 1.6;
+    color: #cbd5e1;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.history-item-details pre {
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.history-status {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+    margin-left: 8px;
+}
+
+.history-status.online {
+    background: rgba(34,197,94,0.15);
+    color: #4ade80;
+}
+
+.history-status.offline {
+    background: rgba(239,68,68,0.15);
+    color: #fca5a5;
+}
+
+.history-critical {
+    color: #fbbf24;
+}
+
 /* --- Responsive --- */
 @media (max-width: 640px) {
     .input-card, .result-card {

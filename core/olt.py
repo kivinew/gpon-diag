@@ -125,7 +125,10 @@ class OltConnection:
             # Typical format: "Uptime is 5 days, 3 hours, 12 minutes"
             uptime_match = re.search(r"Uptime\s+is\s+([\w ,()]+)", uptime_output, re.I)
             if uptime_match:
-                uptime = uptime_match.group(1).strip()
+                raw_uptime = uptime_match.group(1).strip()
+                # Extract only the days component (e.g., "1957 day(s)")
+                days_match = re.search(r"(\d+)\s*day", raw_uptime, re.I)
+                uptime = f"{days_match.group(1)} day(s)" if days_match else raw_uptime
         except Exception:
             logger.debug("Failed to retrieve OLT uptime", exc_info=True)
         return {"model": model, "uptime": uptime, "version": version}

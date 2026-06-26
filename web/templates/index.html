@@ -45,6 +45,7 @@
     </div>
 </div>
 
+<div id="historyBlock" style="display:none;"></div>
 <div id="resultBlock" style="display:none;"></div>
 
 {% if history %}
@@ -92,6 +93,7 @@ form.addEventListener('submit', function(e) {
     overlay.style.display = 'flex';
     resultBlock.style.display = 'none';
     document.getElementById('oltInfoBar').style.display = 'none';
+    document.getElementById('historyBlock').style.display = 'none';
     loadingStatus.textContent = 'Выполняется диагностика…';
 
     fetch('/api/diagnose', {
@@ -124,6 +126,9 @@ form.addEventListener('submit', function(e) {
                             loadingStatus.textContent = 'Подключение к ' + (msg.model || 'OLT') + '…';
                             var badge = document.querySelector('.header-badge');
                             if (badge && msg.model) badge.textContent = msg.model;
+                        } else if (msg.type === 'history') {
+                            renderHistory(msg.history);
+                            document.getElementById('historyBlock').style.display = 'block';
                         } else if (msg.type === 'result') {
                             overlay.style.display = 'none';
                             submitBtn.disabled = false;
@@ -173,6 +178,113 @@ function copyReport() {
         btn.innerHTML = '✓ Скопировано!';
         setTimeout(function() { btn.classList.remove('copied'); btn.innerHTML = old; }, 2000);
     });
+}
+
+function renderHistory(historyItems) {
+    const historyBlock = document.getElementById('historyBlock');
+    if (!historyItems || historyItems.length === 0) return;
+
+    const historyCard = document.createElement('div');
+    historyCard.className = 'history-during-diagnosis';
+    historyCard.innerHTML = '<div class="result-header"><h1>Предыдущие результаты (' + historyItems.length + ')</h1></div>';
+
+    const historyContent = document.createElement('div');
+    historyContent.className = 'history-items';
+
+    historyItems.forEach(function(item) {
+        const report = item.report || {};
+        const isOnline = report.is_online !== false;
+        const statusBadge = isOnline ?
+            '<span class="history-status online">ОНЛАЙН</span>' :
+            '<span class="history-status offline">ОФФЛАЙН</span>';
+
+        // Compact summary: key facts only
+        const summaryParts = [];
+        if (report.model) summaryParts.push('Модель: ' + report.model);
+        if (report.version) {
+            const badVersion = ['V1R003C00S108', 'V1R006C00S130', 'V1R006C00S205', 'V1R006C00S201', 'V1R006C01S201'].includes(report.version);
+            summaryParts.push('Версия: ' + report.version + (badVersion ? ' ⚠' : ''));
+        }
+        if (report.distance_m >= 0) summaryParts.push('Расстояние: ' + report.distance_m + ' м');
+        if (report.ont_rx_power < 900) summaryParts.push('ONT Rx: ' + report.ont_rx_power + ' dBm');
+        if (report.olt_rx_power < 900) summaryParts.push('OLT Rx: ' + report.olt_rx_power + ' dBm');
+        if (report.ping_status) summaryParts.push('Пинг: ' + report.ping_status);
+
+        const problemsCount = (report.problems || []).length;
+        if (problemsCount > 0) {
+            const critical = report.problems.filter(p => p.severity === 'critical').length;
+            const warning = report.problems.filter(p => p.severity === 'warning').length;
+            summaryParts.push('Проблем: ' + problemsCount + (critical > 0 ? ' <span class="history-critical">(!)</span>' : ''));
+        }
+
+        const historyItem = document.createElement('div');
+        historyItem.className = 'history-item';
+        historyItem.dataset.itemId = item.id;
+
+        historyItem.innerHTML =
+            '<div class="history-item-header" onclick="toggleHistoryItem(this)">' +
+            '<div class="history-item-title">' +
+            '<strong>' + escapeHtml(item.olt_name) + '</strong> &middot; ' +
+            '<span class="history-address">' + escapeHtml(item.ont_address) + '</span>' +
+            ' ' + statusBadge +
+            '</div>' +
+            '<span class="history-date">' + escapeHtml(item.created_at) + '</span>' +
+            '<span class="history-toggle">▼</span>' +
+            '</div>' +
+            '<div class="history-item-summary">' + summaryParts.map(function(p) { return '<span>' + p + '</span>'; }).join(' ') + '</div>' +
+            '<div class="history-item-details" style="display:none;">' +
+            '<pre>' + escapeHtml(formatReportForDisplay(report)) + '</pre>' +
+            '</div>';
+
+        historyContent.appendChild(historyItem);
+    });
+
+    historyCard.appendChild(historyContent);
+    historyBlock.innerHTML = '';
+    historyBlock.appendChild(historyCard);
+}
+
+function formatReportForDisplay(report) {
+    const lines = [];
+    if (report.head_station) lines.push('Головная станция: ' + report.head_station + ' | ONT = ' + report.ont);
+    if (report.serial) lines.push('PON SN = ' + report.serial);
+    if (report.description) lines.push('Дескрипшн: ' + report.description);
+    if (report.model) lines.push('Модель: ' + report.model);
+    if (report.version) lines.push('Версия ПО: ' + report.version);
+    if (report.distance_m >= 0) lines.push('Расстояние: ' + report.distance_m + ' м');
+
+    if (report.lan_ports) {
+        report.lan_ports.forEach(function(p) {
+            if (p.link === 'up') {
+                lines.push('LAN' + p.id + ': ' + p.type + ', ' + p.speed + ' Mbps, ' + p.duplex);
+            }
+        });
+    }
+
+    if (report.problems && report.problems.length > 0) {
+        lines.push('');
+        lines.push('Рекомендации:');
+        report.problems.forEach(function(p) {
+            const icon = p.severity === 'critical' ? '!!!' : (p.severity === 'warning' ? '(!)' : '(i)');
+            lines.push(icon + ' ' + p.recommendation);
+        });
+    }
+
+    return lines.join('\n');
+}
+
+function toggleHistoryItem(header) {
+    const item = header.parentElement;
+    const details = item.querySelector('.history-item-details');
+    const toggle = header.querySelector('.history-toggle');
+
+    if (details.style.display === 'none') {
+        details.style.display = 'block';
+        toggle.textContent = '▲';
+    } else {
+        details.style.display = 'none';
+        toggle.textContent = '▼';
+    }
 }
 </script>
 {% endblock %}

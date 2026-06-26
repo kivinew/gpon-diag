@@ -208,6 +208,7 @@ def run_diagnosis(input_data, olt_config, thresholds, allow_actions=True, log=No
     metrics.port = input_data["port"]
     metrics.ont_id = input_data["ont_id"]
     metrics.olt_uptime = olt_uptime
+    metrics.olt_version = olt_info.get('version', '')
 
     if "ont_info" in raw_data: parse_ont_info(raw_data["ont_info"], metrics)
     if "ont_version" in raw_data: parse_ont_version(raw_data["ont_version"], metrics)
