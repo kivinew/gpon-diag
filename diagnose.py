@@ -18,10 +18,20 @@ import re
 import sys
 import yaml
 from datetime import datetime, timezone, timedelta
-# Optional dotenv loading – ignore if not installed
+# Load .env file for credentials – required for OLT connection
 try:
     from dotenv import load_dotenv
-    load_dotenv()
+    load_dotenv(".env")
+except ImportError:
+    # Fallback: read .env manually if dotenv not available
+    env_path = ".env"
+    if os.path.exists(env_path):
+        with open(env_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    key, _, value = line.partition("=")
+                    os.environ.setdefault(key.strip(), value.strip())
 except Exception:
     pass
 

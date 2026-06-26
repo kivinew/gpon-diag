@@ -114,7 +114,7 @@ class OltConnection:
         try:
             version_output = self.send_command("display version", max_more=0)
             # Look for a line like: "Software Version : V200R019C00"
-            version_match = re.search(r"Version\s*[:]?\s*([\w\.]+)", version_output, re.I)
+            version_match = re.search(r"VERSION\s*[:]\s*([^\s]+)", version_output, re.I)
             if version_match:
                 version = version_match.group(1).strip()
         except Exception:
@@ -123,7 +123,7 @@ class OltConnection:
         try:
             uptime_output = self.send_command("display uptime", max_more=0)
             # Typical format: "Uptime is 5 days, 3 hours, 12 minutes"
-            uptime_match = re.search(r"Uptime\s*[:]?\s*([\w ,]+)", uptime_output, re.I)
+            uptime_match = re.search(r"Uptime\s+is\s+([\w ,()]+)", uptime_output, re.I)
             if uptime_match:
                 uptime = uptime_match.group(1).strip()
         except Exception:

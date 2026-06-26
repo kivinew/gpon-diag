@@ -2,7 +2,11 @@
   "permissions": {
     "allow": [
       "Read(//home/sandbox/**)",
-      "Bash(uv *)"
+      "Bash(uv *)",
+      "Bash(qwen *)",
+      "Bash(netstat *)",
+      "Bash(findstr *)",
+      "Bash(curl *)"
     ]
   },
   "$version": 4

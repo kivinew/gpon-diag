@@ -89,8 +89,6 @@ class DiagnosisReport:
         m = self.metrics
         lines = [f"Головная станция: {self.olt_name} | ONT = {m.address}"]
 
-        if m.olt_uptime:
-            lines.append(f"Аптайм OLT: {m.olt_uptime}")
 
         if m.description and m.description != "ONT_NO_DESCRIPTION":
             lines.append(f"Дескрипшн (лицевой счёт) = {m.description}")

@@ -80,6 +80,8 @@ def parse_ont_info(raw: str, m: OntMetrics) -> None:
     m.status = _search(raw, PATTERNS["status"]) or ""
     m.serial = _search(raw, PATTERNS["serial"]) or ""
     m.description = _search(raw, PATTERNS["description"]) or ""
+    if not m.description:
+        m.description = "ONT_NO_DESCRIPTION"
     # Distance: prefer primary, fallback to last known
     dist = _search(raw, PATTERNS["distance"])
     if dist and dist != "-":
