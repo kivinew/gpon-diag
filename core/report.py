@@ -192,9 +192,11 @@ class DiagnosisReport:
             pr = m.ping_result
             target = getattr(m, 'ping_target', '1.1.1.1')
             if pr and pr.get("transmit"):
-                lines.append(f"Remote ping ({target}): {m.ping_status} (Tx={pr['transmit']}, Rx={pr['receive']}, Lost={pr['lost']})")
+                lines.append(f"Пинг: {m.ping_status} ({pr['receive']}/{pr['transmit']})")
+                if pr.get("lost", 0) > 0:
+                    lines.append(f"Потеряно пакетов: {pr['lost']}")
             else:
-                lines.append(f"Remote ping ({target}): {m.ping_status}")
+                lines.append(f"Пинг: {m.ping_status}")
 
         if self.problems:
             lines.append("")
