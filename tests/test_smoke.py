@@ -43,6 +43,48 @@ def test_offline_dying_gasp():
     assert any(p.category == "power" for p in problems)
     print("PASSED\n")
 
+# New test that loads a report from data/reports directory
+def test_load_report_from_data():
+    import json, os
+    reports_dir = os.path.join(os.path.dirname(__file__), "..", "data", "reports")
+    # Find a JSON report file
+    for fname in os.listdir(reports_dir):
+        if fname.lower().endswith('.json'):
+            report_path = os.path.join(reports_dir, fname)
+            with open(report_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            # Basic sanity check: ensure report has required keys
+            assert 'timestamp' in data
+            assert 'metrics' in data
+            assert 'problems' in data
+            break
+    else:
+        # No report files found – this test will be skipped
+        raise AssertionError('No JSON report files found in data/reports')
+
+    raw = """
+  F/S/P                   : 0/1/3
+  ONT-ID                  : 9
+  Run state               : offline
+  Last down cause         : dying-gasp
+  Last up time            : 2026-06-11 08:47:33+07:00
+  Last down time          : 2026-06-11 10:09:33+07:00
+  ONT distance(m)         : 2765
+  SN                      : 4857544312E0E379 (HWTC-12E0E379)
+"""
+    m = OntMetrics(address="0/1/3/9", frame="0", slot="1", port="3", ont_id="9")
+    parse_ont_info(raw, m)
+    engine = create_default_engine(make_thresholds())
+    problems = engine.diagnose(m)
+    report = DiagnosisReport(datetime.now().isoformat(), "TEST", m, problems, True)
+
+    print("=== TEST 1: Offline (dying-gasp) ===")
+    print(report.to_text())
+    print()
+    assert not m.is_online
+    assert any(p.category == "power" for p in problems)
+    print("PASSED\n")
+
 
 def test_online_healthy():
     raw = """

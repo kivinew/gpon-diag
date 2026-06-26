@@ -355,37 +355,38 @@ class OltConnection:
         return self._parse_fsp(output)
 
     def find_ont_by_description(self, description):
-        # Попробовать найти с оригинальным значением
         output = self.send_command(f"display ont info by-desc {description}", max_more=0)
-        result = self._parse_fsp(output)
-        if result:
-            return result
-        # Fallback: попробовать с префиксом fl_ если description - это цифры
-        if description.isdigit() and 5 <= len(description) <= 16:
-            output = self.send_command(f"display ont info by-desc fl_{description}", max_more=0)
-            return self._parse_fsp(output)
-        return None
+        return self._parse_fsp(output)
 
     @staticmethod
     def _parse_fsp(output):
-        # Huawei MA5600 format:
+        # Huawei MA5600 table format:
         #   F/S/P   ONT-ID   Description
         #   0/ 0/6       0   fl_102693
-        # Also supports format with colons from other variants
+        # Key-value format (across multiple lines):
         #   F/S/P                   : 0/1/3
         #   ONT-ID                  : 9
+        #   Description             : fl_102693
         lines = output.strip().split('\n')
+        fsp_val = oid_val = None
         for line in lines:
-            # Try format: "0/ 0/6 0 fl_102693" (table format with spaces inside F/S/P)
-            # Match: digits, optional space, slash, optional space, digits, optional space, slash, optional space, digits, spaces, ONT-ID
+            # Reset on empty line separator between ONT records
+            if not line.strip():
+                fsp_val = oid_val = None
+                continue
+            # Table format: "0/ 0/6 0 fl_102693" — single-line F/S/P + ONT-ID
             m = re.match(r'\s*(\d+)\s*/\s*(\d+)\s*/\s*(\d+)\s+(\d+)', line)
             if m:
                 return {"frame": m.group(1), "slot": m.group(2), "port": m.group(3), "ont_id": m.group(4)}
-            # Try format with colons: "F/S/P : 0/1/3" and "ONT-ID : 9"
-            fsp = re.search(r"F/S/P\s*:\s*([\d/]+)", line)
-            oid = re.search(r"ONT-ID\s*:\s*(\d+)", line)
-            if fsp and oid:
-                parts = fsp.group(1).split("/")
+            # Collect key-value pairs across lines
+            fsp_m = re.search(r"F/S/P\s*:\s*([\d/]+)", line)
+            oid_m = re.search(r"ONT-ID\s*:\s*(\d+)", line)
+            if fsp_m:
+                fsp_val = fsp_m.group(1)
+            if oid_m:
+                oid_val = oid_m.group(1)
+            if fsp_val and oid_val:
+                parts = fsp_val.split("/")
                 if len(parts) == 3:
-                    return {"frame": parts[0], "slot": parts[1], "port": parts[2], "ont_id": oid.group(1)}
+                    return {"frame": parts[0], "slot": parts[1], "port": parts[2], "ont_id": oid_val}
         return None

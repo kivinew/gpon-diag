@@ -14,10 +14,10 @@ class Thresholds:
     olt_rx_power_crit: float = -35.0
     bip_error_warn: int = 10000
     bip_error_crit: int = 100000
-    cpu_temp_warn: int = 75
-    cpu_temp_crit: int = 85
-    cpu_usage_warn: int = 80
-    memory_usage_warn: int = 85
+    cpu_temp_warn: int = 80
+    cpu_temp_crit: int = 90
+    cpu_usage_warn: int = 90
+    memory_usage_warn: int = 90
     distance_warn: int = 15000
     distance_crit: int = 20000
     bad_versions: list = field(default_factory=list)

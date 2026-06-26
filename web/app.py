@@ -14,6 +14,7 @@ from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import text
 
 
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from diagnose import load_config, find_available_olt, parse_input, run_diagnosis
 from core.olt import OntNotFoundError
 from core.thresholds import Thresholds
