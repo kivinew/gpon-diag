@@ -377,12 +377,10 @@ class OltConnection:
         lines = output.strip().split('\n')
         for line in lines:
             # Try format: "0/ 0/6 0 fl_102693" (table format with spaces inside F/S/P)
-            match = re.match(r'\s*(\d+)\s*/\s*\d+\s*/\s*\d+\s+(\d+)', line)
-            if match:
-                # Extract full F/S/P from line and parse
-                fsp_match = re.match(r'\s*(\d+)\s*/\s*(\d+)\s*/\s*(\d+)', line)
-                if fsp_match:
-                    return {"frame": fsp_match.group(1), "slot": fsp_match.group(2), "port": fsp_match.group(3), "ont_id": match.group(1)}
+            # Match: digits, optional space, slash, optional space, digits, optional space, slash, optional space, digits, spaces, ONT-ID
+            m = re.match(r'\s*(\d+)\s*/\s*(\d+)\s*/\s*(\d+)\s+(\d+)', line)
+            if m:
+                return {"frame": m.group(1), "slot": m.group(2), "port": m.group(3), "ont_id": m.group(4)}
             # Try format with colons: "F/S/P : 0/1/3" and "ONT-ID : 9"
             fsp = re.search(r"F/S/P\s*:\s*([\d/]+)", line)
             oid = re.search(r"ONT-ID\s*:\s*(\d+)", line)
