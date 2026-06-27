@@ -45,8 +45,8 @@
     </div>
 </div>
 
-<div id="historyBlock" style="display:none;"></div>
 <div id="resultBlock" style="display:none;"></div>
+<div id="historyBlock" style="display:none;"></div>
 
 {% if history %}
 <div class="history-section">
@@ -94,6 +94,7 @@ form.addEventListener('submit', function(e) {
     resultBlock.style.display = 'none';
     document.getElementById('oltInfoBar').style.display = 'none';
     document.getElementById('historyBlock').style.display = 'none';
+    window.savedHistory = null;
     loadingStatus.textContent = 'Выполняется диагностика…';
 
     fetch('/api/diagnose', {
@@ -127,8 +128,7 @@ form.addEventListener('submit', function(e) {
                             var badge = document.querySelector('.header-badge');
                             if (badge && msg.model) badge.textContent = msg.model;
                         } else if (msg.type === 'history') {
-                            renderHistory(msg.history);
-                            document.getElementById('historyBlock').style.display = 'block';
+                            window.savedHistory = msg.history;  // Save to display after result
                         } else if (msg.type === 'result') {
                             overlay.style.display = 'none';
                             submitBtn.disabled = false;
@@ -141,6 +141,15 @@ form.addEventListener('submit', function(e) {
                                 '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg> Копировать</button>' +
                                 '<a href="/" class="btn-back">Новый запрос</a></div></div>' +
                                 '<div class="report-block" id="report">' + escapeHtml(msg.report) + '</div></div>';
+                            // After result, show history block AFTER resultBlock if we have it
+                            if (window.savedHistory && window.savedHistory.length > 0) {
+                                // Insert historyBlock AFTER resultBlock in DOM
+                                const historyBlock = document.getElementById('historyBlock');
+                                const parent = resultBlock.parentNode;
+                                parent.insertBefore(historyBlock, resultBlock.nextSibling);
+                                renderHistory(window.savedHistory);
+                                historyBlock.style.display = 'block';
+                            }
                         } else if (msg.type === 'error') {
                             overlay.style.display = 'none';
                             submitBtn.disabled = false;
