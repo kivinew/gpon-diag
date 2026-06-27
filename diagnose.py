@@ -178,8 +178,12 @@ def run_diagnosis(input_data, olt_config, thresholds, allow_actions=True, log=No
         _log(f"Поиск ONT по SN {input_data['value']}...")
         loc = olt.find_ont_by_sn(input_data["value"])
         if not loc:
-            _log("не найдена")
-            return DiagnosisReport(datetime.now(TZ_LOCAL).isoformat(), host, OntMetrics(), [], True)
+            _log("не найдена, пробуем поиск по описанию...")
+            # fallback to description lookup using the same value (may be description or SN)
+            loc = olt.find_ont_by_description(input_data["value"])
+            if not loc:
+                _log("по описанию тоже не найдено")
+                return DiagnosisReport(datetime.now(TZ_LOCAL).isoformat(), host, OntMetrics(), [], True)
         _log("OK")
         input_data.update(loc)
     elif input_data["type"] == "description":
