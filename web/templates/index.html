@@ -38,15 +38,10 @@
 </div>
 
 <div id="oltInfoBar" style="display:none;">
-    <div class="olt-info-banner">
-        <span class="olt-info-item"><strong>Модель:</strong> <span id="oltModel">—</span></span>
-        <span class="olt-info-item"><strong>Аптайм:</strong> <span id="oltUptime">—</span></span>
-        <span class="olt-info-item"><strong>ПО:</strong> <span id="oltVersion">—</span></span>
-    </div>
 </div>
 
 <div id="resultBlock" style="display:none;"></div>
-<div id="historyBlock" style="display:none;"></div>
+<div id="previousReportsBlock" style="display:none;"></div>
 
 {% if history %}
 <div class="history-section">
@@ -91,9 +86,10 @@ form.addEventListener('submit', function(e) {
 
     submitBtn.disabled = true;
     overlay.style.display = 'flex';
-    resultBlock.style.display = 'none';
     document.getElementById('oltInfoBar').style.display = 'none';
-    document.getElementById('historyBlock').style.display = 'none';
+    resultBlock.style.display = 'none';
+    const prevReports = document.getElementById('previousReportsBlock');
+    if (prevReports) prevReports.style.display = 'none';
     window.savedHistory = null;
     loadingStatus.textContent = 'Выполняется диагностика…';
 
@@ -120,9 +116,6 @@ form.addEventListener('submit', function(e) {
                         if (msg.type === 'log') {
                             loadingStatus.textContent = msg.line;
                         } else if (msg.type === 'olt_info') {
-                            document.getElementById('oltModel').textContent = msg.model || '—';
-                            document.getElementById('oltUptime').textContent = msg.uptime || '—';
-                            document.getElementById('oltVersion').textContent = msg.version || '—';
                             document.getElementById('oltInfoBar').style.display = 'block';
                             loadingStatus.textContent = 'Подключение к ' + (msg.model || 'OLT') + '…';
                             var badge = document.querySelector('.header-badge');
@@ -141,14 +134,25 @@ form.addEventListener('submit', function(e) {
                                 '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg> Копировать</button>' +
                                 '<a href="/" class="btn-back">Новый запрос</a></div></div>' +
                                 '<div class="report-block" id="report">' + escapeHtml(msg.report) + '</div></div>';
-                            // After result, show history block AFTER resultBlock if we have it
+                            // Show history block AFTER resultBlock if we have saved history
                             if (window.savedHistory && window.savedHistory.length > 0) {
-                                // Insert historyBlock AFTER resultBlock in DOM
-                                const historyBlock = document.getElementById('historyBlock');
-                                const parent = resultBlock.parentNode;
-                                parent.insertBefore(historyBlock, resultBlock.nextSibling);
+                                const prevReportsBlock = document.getElementById('previousReportsBlock');
                                 renderHistory(window.savedHistory);
-                                historyBlock.style.display = 'block';
+                                // Move prevReportsBlock to be right after resultBlock
+                                // Get all siblings and find where to insert
+                                const parent = resultBlock.parentNode;
+                                // Remove from current position
+                                if (prevReportsBlock.parentNode) {
+                                    prevReportsBlock.parentNode.removeChild(prevReportsBlock);
+                                }
+                                // Insert after resultBlock
+                                const nextSibling = resultBlock.nextSibling;
+                                if (nextSibling) {
+                                    parent.insertBefore(prevReportsBlock, nextSibling);
+                                } else {
+                                    parent.appendChild(prevReportsBlock);
+                                }
+                                prevReportsBlock.style.display = 'block';
                             }
                         } else if (msg.type === 'error') {
                             overlay.style.display = 'none';
@@ -190,7 +194,7 @@ function copyReport() {
 }
 
 function renderHistory(historyItems) {
-    const historyBlock = document.getElementById('historyBlock');
+    const historyBlock = document.getElementById('previousReportsBlock');
     if (!historyItems || historyItems.length === 0) return;
 
     const historyCard = document.createElement('div');

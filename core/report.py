@@ -96,11 +96,6 @@ class DiagnosisReport:
             lines.append("Дескрипшн (лицевой счёт) не установлен")
         if m.serial:
             lines.append(f"PON SN = {m.serial}")
-        # OLT uptime and version (displayed in banner)
-        if m.olt_uptime:
-            lines.append(f"Аптайм OLT: {m.olt_uptime}")
-        if getattr(m, 'olt_version', None):
-            lines.append(f"Версия ПО OLT: {m.olt_version}")
 
         if not m.is_online:
             lines.append("Терминал недоступен.")

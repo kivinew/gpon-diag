@@ -7,7 +7,8 @@
       "Bash(uv sync *)",
       "PowerShell(& .venv\\\\Scripts\\\\activate.ps1; python -c \"import dotenv; print\\('OK'\\)\")",
       "PowerShell(pip show *)",
-      "PowerShell(.venv\\\\Scripts\\\\python.exe -c \"import dotenv; print\\('OK'\\)\")"
+      "PowerShell(.venv\\\\Scripts\\\\python.exe -c \"import dotenv; print\\('OK'\\)\")",
+      "Bash(python *)"
     ]
   }
 }
