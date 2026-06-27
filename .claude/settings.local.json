@@ -9,7 +9,11 @@
       "PowerShell(pip show *)",
       "PowerShell(.venv\\\\Scripts\\\\python.exe -c \"import dotenv; print\\('OK'\\)\")",
       "Bash(python *)",
-      "Bash(node *)"
+      "Bash(node *)",
+      "Bash(npx *)",
+      "Bash(code *)",
+      "PowerShell(code *)",
+      "PowerShell(& \"C:\\\\Users\\\\Administrator\\\\AppData\\\\Local\\\\Programs\\\\Microsoft VS Code\\\\bin\\\\code\" --install-extension @kodadev/koda-cli)"
     ]
   }
 }
