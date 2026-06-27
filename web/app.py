@@ -223,6 +223,30 @@ def index():
 def ping():
     return {"status": "ok"}
 
+@app.route("/api/history/<int:diag_id>", methods=["GET"])
+def api_history_detail(diag_id):
+    """Return a single diagnosis record by ID."""
+    record = Diagnosis.query.get(diag_id)
+    if not record:
+        return {"error": "Запись не найдена."}, 404
+    try:
+        report_data = json.loads(record.report_json) if record.report_json else {}
+    except (json.JSONDecodeError, TypeError):
+        report_data = {}
+    return {
+        "id": record.id,
+        "timestamp": record.timestamp,
+        "created_at": record.created_at.strftime("%d.%m.%Y %H:%M"),
+        "olt_name": record.olt_name,
+        "olt_host": record.olt_host,
+        "ont_address": record.ont_address,
+        "input_type": record.input_type,
+        "input_value": record.input_value,
+        "report": report_data,
+        "is_online": report_data.get("is_online", True),
+    }
+
+
 @app.route("/api/history", methods=["GET"])
 def api_history():
     """Search historical diagnosis results by ONT address, serial, or description."""

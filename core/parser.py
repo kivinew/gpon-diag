@@ -7,6 +7,13 @@ from core.models import OntMetrics, LanPort, MacDevice
 
 logger = logging.getLogger(__name__)
 
+# ANSI escape sequence regex (ESC [ ... m)
+ANSI_ESCAPE = re.compile(r'\x1b\[[0-9;]*m')
+
+def strip_ansi(text: str) -> str:
+    """Remove ANSI escape sequences from text."""
+    return ANSI_ESCAPE.sub('', text)
+
 PATTERNS = {
     "status":           r"Run state\s*: *(.+)",
     "serial":           r"(?i)SN\s*: *([\da-fA-F]{16})",
@@ -77,6 +84,7 @@ def _search_float(text, pattern):
         return 999.0
 
 def parse_ont_info(raw: str, m: OntMetrics) -> None:
+    raw = strip_ansi(raw)
     m.status = _search(raw, PATTERNS["status"]) or ""
     m.serial = _search(raw, PATTERNS["serial"]) or ""
     m.description = _search(raw, PATTERNS["description"]) or ""
@@ -122,6 +130,7 @@ def parse_ont_info(raw: str, m: OntMetrics) -> None:
     m.online_duration = _search(raw, PATTERNS["online_duration"]) or ""
 
 def parse_ont_version(raw: str, m: OntMetrics) -> None:
+    raw = strip_ansi(raw)
     model = _search(raw, PATTERNS["ont_model_alt"])
     if not model:
         model = _search(raw, PATTERNS["ont_model"])
@@ -129,6 +138,7 @@ def parse_ont_version(raw: str, m: OntMetrics) -> None:
     m.version = _search(raw, PATTERNS["soft_version"]) or ""
 
 def parse_optical_info(raw: str, m: OntMetrics) -> None:
+    raw = strip_ansi(raw)
     m.ont_rx_power = _search_float(raw, PATTERNS["ont_rx_power"])
     m.olt_rx_power = _search_float(raw, PATTERNS["olt_rx_power"])
     m.ont_tx_power = _search_float(raw, PATTERNS["ont_tx_power"])
@@ -139,10 +149,12 @@ def parse_optical_info(raw: str, m: OntMetrics) -> None:
     m.vendor_pn = _search(raw, PATTERNS["vendor_pn"]) or ""
 
 def parse_line_quality(raw: str, m: OntMetrics) -> None:
+    raw = strip_ansi(raw)
     m.upstream_errors = _search_int(raw, PATTERNS["upstream_errors"])
     m.downstream_errors = _search_int(raw, PATTERNS["downstream_errors"])
 
 def parse_lan_ports(raw: str, m: OntMetrics) -> None:
+    raw = strip_ansi(raw)
     m.lan_ports = []
     for match in re.finditer(PATTERNS["lan_ports"], raw):
         m.lan_ports.append(LanPort(
@@ -151,6 +163,7 @@ def parse_lan_ports(raw: str, m: OntMetrics) -> None:
         ))
 
 def parse_mac_addresses(raw: str, m: OntMetrics) -> None:
+    raw = strip_ansi(raw)
     m.mac_devices = []
     seen = set()
     for match in re.finditer(PATTERNS["mac_entry"], raw):
@@ -172,10 +185,12 @@ def parse_mac_addresses(raw: str, m: OntMetrics) -> None:
             ))
 
 def parse_ipconfig(raw: str, m: OntMetrics) -> None:
+    raw = strip_ansi(raw)
     m.ip_address = _search(raw, PATTERNS["ip_output"]) or ""
 
 def parse_wan_info(raw: str, m: OntMetrics) -> None:
     """Parse 'display ont wan-info' output. Extracts WAN connections."""
+    raw = strip_ansi(raw)
     m.wan_connections = []
     # Split by Index sections
     sections = re.split(r'Index\s*:\s*(\d+)', raw)
@@ -194,6 +209,7 @@ def parse_wan_info(raw: str, m: OntMetrics) -> None:
 
 def parse_lan_ports_detail(raw: str, m: OntMetrics) -> None:
     """Parse 'display ont port state' output with speed/duplex."""
+    raw = strip_ansi(raw)
     m.lan_ports = []
     for match in re.finditer(PATTERNS["lan_ports"], raw):
         m.lan_ports.append(LanPort(
@@ -203,6 +219,7 @@ def parse_lan_ports_detail(raw: str, m: OntMetrics) -> None:
 
 def parse_eth_errors(raw: str, m: OntMetrics, lan_id: str) -> None:
     """Parse 'display statistics ont-eth' output for a specific LAN port."""
+    raw = strip_ansi(raw)
     if lan_id not in m.eth_errors:
         m.eth_errors[lan_id] = {}
     fcs = _search_int(raw, PATTERNS["eth_fcs"])
@@ -217,6 +234,7 @@ def parse_eth_errors(raw: str, m: OntMetrics, lan_id: str) -> None:
 
 def parse_register_info(raw: str, m: OntMetrics) -> None:
     """Parse 'display ont register-info' output. Extracts register entries."""
+    raw = strip_ansi(raw)
     uptimes = re.findall(r"UpTime\s*:\s*([\d-]+\s[\d:+-]+)", raw)
     downtimes = re.findall(r"DownTime\s*:\s*([\d-]+\s[\d:+-]+)", raw)
     
@@ -249,6 +267,7 @@ def parse_register_info(raw: str, m: OntMetrics) -> None:
 
 
 def parse_ping_result(raw: str, m: OntMetrics) -> None:
+    raw = strip_ansi(raw)
     transmit = re.search(r"Transmit packets?\s*:\s*(\d+)", raw)
     receive = re.search(r"Receive(?:d)? packets?\s*:\s*(\d+)", raw)
     lost = re.search(r"Lost packets?\s*:\s*(\d+)", raw)

@@ -57,7 +57,7 @@
         </thead>
         <tbody>
             {% for row in history %}
-            <tr>
+            <tr class="history-row" data-id="{{ row.id }}" data-input="{{ row.input_value }}" data-olt-host="{{ row.olt_host }}" onclick="selectHistoryRow(this)">
                 <td>{{ row.created_at.strftime('%d.%m.%Y %H:%M') }}</td>
                 <td>{{ row.olt_name }} ({{ row.olt_host }})</td>
                 <td>{{ row.ont_address }}</td>
@@ -261,26 +261,114 @@ function formatReportForDisplay(report) {
     const lines = [];
     if (report.head_station) lines.push('Головная станция: ' + report.head_station + ' | ONT = ' + report.ont);
     if (report.serial) lines.push('PON SN = ' + report.serial);
-    if (report.description) lines.push('Дескрипшн: ' + report.description);
-    if (report.model) lines.push('Модель: ' + report.model);
-    if (report.version) lines.push('Версия ПО: ' + report.version);
-    if (report.distance_m >= 0) lines.push('Расстояние: ' + report.distance_m + ' м');
+    if (report.description && report.description !== 'ONT_NO_DESCRIPTION') {
+        lines.push('Дескрипшн (лицевой счёт) = ' + report.description);
+    } else if (report.description === 'ONT_NO_DESCRIPTION') {
+        lines.push('Дескрипшн (лицевой счёт) не установлен');
+    }
 
-    if (report.lan_ports) {
-        report.lan_ports.forEach(function(p) {
-            if (p.link === 'up') {
-                lines.push('LAN' + p.id + ': ' + p.type + ', ' + p.speed + ' Mbps, ' + p.duplex);
+    if (!report.is_online) {
+        lines.push('Терминал недоступен.');
+        if (report.last_down_time && report.last_down_time !== '-') lines.push('Отключён: ' + report.last_down_time);
+        if (report.last_up_time && report.last_up_time !== '-') lines.push('Время последнего включения: ' + report.last_up_time);
+        if (report.distance_m >= 0) lines.push('Расстояние от OLT (м): ' + report.distance_m);
+        if (report.last_down_cause && report.last_down_cause !== '-') {
+            var cause = report.last_down_cause;
+            if (cause === 'нет данных') {
+                lines.push('Причина недоступности не зафиксирована.');
+            } else if (cause.indexOf('LOS') >= 0 || cause.indexOf('LOSI') >= 0 || cause.indexOf('LOBI') >= 0) {
+                lines.push('Причина: ' + cause + ' — отсутствует оптический сигнал.');
+            } else if (cause.indexOf('LOFi') >= 0) {
+                lines.push('Причина: ' + cause + ' — низкий оптический сигнал.');
+            } else if (cause.indexOf('dying-gasp') >= 0) {
+                lines.push('Причина: ' + cause + ' — отключение питания.');
+            } else if (cause.indexOf('wire-down') >= 0) {
+                lines.push('Причина: ' + cause + ' — магистральный кабель (массовая проблема).');
+            } else {
+                lines.push('Причина: ' + cause);
             }
-        });
+        }
+        if (report.last_down_cause === '-' && report.register_down_count === 0) {
+            lines.push('Нет записей о падениях в реестре.');
+        }
+    } else {
+        lines.push('Терминал доступен.');
+        if (report.last_up_time) lines.push('Включён: ' + report.last_up_time);
+        if (report.model) lines.push('Модель терминала: ' + report.model);
+        if (report.version) {
+            var bad = ['V1R003C00S108','V1R006C00S130','V1R006C00S205','V1R006C00S201','V1R006C01S201'].indexOf(report.version) >= 0 ? ' !!!' : '';
+            lines.push('Версия ПО: ' + report.version + bad);
+        }
+        if (report.distance_m >= 0) lines.push('Расстояние от OLT (м): ' + report.distance_m);
+        if (report.online_duration && report.online_duration !== '-') lines.push('Аптайм: ' + report.online_duration);
+        if (report.power_reduction && report.power_reduction !== '-') lines.push('Power reduction: ' + report.power_reduction);
+        lines.push('');
+
+        if (report.ont_rx_power < 900) lines.push('ONT Rx (dBm): ' + report.ont_rx_power);
+        if (report.olt_rx_power < 900) lines.push('OLT Rx (dBm): ' + report.olt_rx_power);
+        if (report.ont_tx_power && report.ont_tx_power < 900) lines.push('ONT Tx (dBm): ' + report.ont_tx_power);
+        if (report.laser_bias_current && report.laser_bias_current >= 0) lines.push('Laser Bias (mA): ' + report.laser_bias_current);
+        if (report.ont_temperature && report.ont_temperature > -900) lines.push('Температура (°C): ' + report.ont_temperature);
+        if (report.supply_voltage && report.supply_voltage >= 0) lines.push('Напряжение (V): ' + report.supply_voltage);
+        if (report.module_subtype) lines.push('Тип модуля: ' + report.module_subtype);
+        if (report.upstream_errors > 0 || report.downstream_errors > 0) {
+            lines.push('Ошибки оптики: Up=' + report.upstream_errors + ', Down=' + report.downstream_errors);
+        } else {
+            lines.push('Ошибок оптики не обнаружено.');
+        }
+        lines.push('');
+
+        if (report.lan_ports) {
+            report.lan_ports.forEach(function(p) {
+                if (p.link === 'up') {
+                    var errStr = '';
+                    if (report.eth_errors && report.eth_errors[p.id]) {
+                        var errs = report.eth_errors[p.id];
+                        var fcs = errs.fcs || 0;
+                        var rxBad = errs.received_bad_bytes || 0;
+                        var txBad = errs.sent_bad_bytes || 0;
+                        if (fcs + rxBad + txBad > 0) errStr = ' [FCS=' + fcs + ', bad=' + (rxBad + txBad) + ']';
+                    }
+                    lines.push('LAN' + p.id + ': ' + p.type + ', ' + p.speed + ' Mbps, ' + p.duplex + ', Link=up' + errStr);
+                }
+            });
+        }
+        lines.push('');
+
+        if (report.mac_devices && report.mac_devices.length > 0) {
+            lines.push('MAC-адреса устройств за ONT:');
+            var seen = {};
+            report.mac_devices.forEach(function(d) {
+                if (seen[d.mac]) return;
+                seen[d.mac] = true;
+                var portLabel = d.port_type === 'ETH' ? 'LAN' : d.port_type;
+                lines.push(portLabel + d.port_number + ' ' + d.mac);
+            });
+            lines.push('');
+        }
+
+        if (report.ping_status) {
+            var pr = report.ping_result;
+            var target = report.ping_target || '1.1.1.1';
+            if (pr && pr.transmit) {
+                lines.push('Пинг: ' + report.ping_status + ' (' + pr.receive + '/' + pr.transmit + ')');
+                if (pr.lost > 0) lines.push('Потеряно пакетов: ' + pr.lost);
+            } else {
+                lines.push('Пинг: ' + report.ping_status);
+            }
+        }
     }
 
     if (report.problems && report.problems.length > 0) {
         lines.push('');
         lines.push('Рекомендации:');
         report.problems.forEach(function(p) {
-            const icon = p.severity === 'critical' ? '!!!' : (p.severity === 'warning' ? '(!)' : '(i)');
+            var icon = p.severity === 'critical' ? '!!!' : (p.severity === 'warning' ? '(!)' : '(i)');
             lines.push(icon + ' ' + p.recommendation);
         });
+    } else {
+        lines.push('');
+        lines.push('Нарушений не выявлено.');
     }
 
     return lines.join('\n');
@@ -298,6 +386,73 @@ function toggleHistoryItem(header) {
         details.style.display = 'none';
         toggle.textContent = '▼';
     }
+}
+
+function selectHistoryRow(row) {
+    const diagId = row.dataset.id;
+    const inputValue = row.dataset.input;
+    const oltHost = row.dataset.oltHost;
+
+    // Fill the query input
+    document.getElementById('query').value = inputValue;
+
+    // Select the matching OLT in the dropdown
+    if (oltHost) {
+        const oltSelect = document.getElementById('olt_host');
+        for (let i = 0; i < oltSelect.options.length; i++) {
+            if (oltSelect.options[i].value === oltHost) {
+                oltSelect.selectedIndex = i;
+                break;
+            }
+        }
+    }
+
+    // Highlight the selected row
+    document.querySelectorAll('.history-row').forEach(function(r) {
+        r.classList.remove('selected');
+    });
+    row.classList.add('selected');
+
+    // Load the historical report
+    loadHistoricalReport(diagId);
+}
+
+function loadHistoricalReport(diagId) {
+    const resultBlock = document.getElementById('resultBlock');
+    const prevReports = document.getElementById('previousReportsBlock');
+    if (prevReports) prevReports.style.display = 'none';
+
+    resultBlock.style.display = 'block';
+    resultBlock.innerHTML =
+        '<div class="result-card">' +
+        '<div class="result-header"><h1>Загрузка…</h1></div>' +
+        '<div class="report-block">Загрузка отчёта…</div></div>';
+
+    fetch('/api/history/' + diagId)
+        .then(function(resp) { return resp.json(); })
+        .then(function(data) {
+            if (data.error) {
+                resultBlock.innerHTML =
+                    '<div class="result-card"><div class="result-header"><h1>Ошибка</h1></div>' +
+                    '<div class="flash-msg error">' + escapeHtml(data.error) + '</div></div>';
+                return;
+            }
+            const report = data.report || {};
+            resultBlock.innerHTML =
+                '<div class="result-card">' +
+                '<div class="result-header"><h1>Результат диагностики</h1>' +
+                '<div class="result-actions">' +
+                '<span class="history-timestamp">' + escapeHtml(data.created_at) + ' &middot; ' + escapeHtml(data.olt_name) + '</span>' +
+                '<button class="btn-copy" onclick="copyReport()">' +
+                '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg> Копировать</button>' +
+                '<a href="/" class="btn-back">Новый запрос</a></div></div>' +
+                '<div class="report-block" id="report">' + escapeHtml(formatReportForDisplay(report)) + '</div></div>';
+        })
+        .catch(function(err) {
+            resultBlock.innerHTML =
+                '<div class="result-card"><div class="result-header"><h1>Ошибка</h1></div>' +
+                '<div class="flash-msg error">Ошибка загрузки: ' + escapeHtml(err.message) + '</div></div>';
+        });
 }
 </script>
 {% endblock %}

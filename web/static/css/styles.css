@@ -490,6 +490,26 @@ body {
     background: rgba(56,189,248,0.04);
 }
 
+.history-row {
+    cursor: pointer;
+    transition: background 0.15s;
+}
+
+.history-row:hover td {
+    background: rgba(56,189,248,0.08) !important;
+}
+
+.history-row.selected td {
+    background: rgba(56,189,248,0.15) !important;
+    border-top-color: rgba(56,189,248,0.2);
+}
+
+.history-timestamp {
+    font-size: 13px;
+    color: #64748b;
+    white-space: nowrap;
+}
+
 /* --- Footer --- */
 .footer {
     background: rgba(15,23,42,0.6);

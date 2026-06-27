@@ -84,8 +84,22 @@ def load_task_card(task_id: str) -> Optional[TaskCard]:
         return None
     with open(path, "r", encoding="utf-8") as f:
         data = json.load(f)
-    if isinstance(data.get("status"), str):
-        data["status"] = TaskStatus(data["status"])
+    # При загрузке статус может быть уже объектом Enum (если файл был
+    # записан с помощью .to_dict()) или строкой. Приводим к Enum только в
+    # случае строкового значения, иначе оставляем как есть.
+    # Приведение поля "status" к Enum.
+    # Возможные варианты в файле:
+    #   * "pending" (обычная строка) – обычный случай.
+    #   * "TaskStatus.PENDING" (строка, полученная при прямой сериализации Enum).
+    #   * уже объект Enum – тогда ничего не делаем.
+    status_val = data.get("status")
+    if isinstance(status_val, str):
+        # Если в строке присутствует точка, берём часть после неё.
+        if "." in status_val:
+            status_val = status_val.split(".")[-1].lower()
+        data["status"] = TaskStatus(status_val)
+    # иначе оставляем как есть (Enum уже).
+
     return TaskCard(**data)
 
 

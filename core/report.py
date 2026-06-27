@@ -245,6 +245,8 @@ class DiagnosisReport:
             "upstream_errors": m.upstream_errors,
             "downstream_errors": m.downstream_errors,
             "lan_ports": [{"id": p.lan_id, "type": p.port_type, "speed": p.speed, "duplex": p.duplex, "link": p.link_state} for p in m.lan_ports],
+            "eth_errors": m.eth_errors,
+            "mac_devices": [{"mac": d.mac, "port_type": d.port_type, "port_number": d.port_number} for d in m.mac_devices],
             "wan_connections": m.wan_connections,
             "ping_status": m.ping_status,
             "ping_target": m.ping_target,
