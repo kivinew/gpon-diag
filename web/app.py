@@ -232,7 +232,6 @@ def api_history():
     if not query:
         return {"error": "Введите запрос для поиска."}, 400
 
-    # Search by ont_address, serial, or description
     history_records = Diagnosis.query.filter(
         db.or_(
             Diagnosis.ont_address.contains(query),
@@ -260,6 +259,88 @@ def api_history():
         })
 
     return {"history": results}
+
+
+@app.route("/orchestrator", methods=["GET"])
+def orchestrator_index():
+    from orchestrator.agent_registry import AgentRegistry
+    from orchestrator.task_card import TaskStatus
+    registry = AgentRegistry()
+    agents = registry.list_all()
+    return render_template("orchestrator/index.html", agents=agents)
+
+
+@app.route("/orchestrator/tasks", methods=["GET"])
+def orchestrator_tasks():
+    from orchestrator.task_card import list_task_cards, TaskStatus
+    cards = list_task_cards()
+    tasks = []
+    for c in cards:
+        tasks.append({
+            "task_id": c.task_id,
+            "title": c.title,
+            "agent_id": c.agent_id,
+            "status": c.status.value,
+            "zone": c.zone,
+            "revision_count": c.revision_count,
+            "errors": c.errors,
+        })
+    return {"tasks": tasks}
+
+
+@app.route("/orchestrator/agents", methods=["GET"])
+def orchestrator_agents():
+    from orchestrator.agent_registry import AgentRegistry, AgentStatus
+    registry = AgentRegistry()
+    agents = registry.list_all()
+    agent_data = []
+    for aid, info in agents.items():
+        agent_data.append({
+            "agent_id": info.agent_id,
+            "zone": info.zone,
+            "status": info.status.value,
+            "files_intended": info.files_intended,
+            "error_message": info.error_message,
+        })
+    return {"agents": agent_data}
+
+
+@app.route("/orchestrator/verify", methods=["POST"])
+def orchestrator_verify():
+    from orchestrator.external_control import ExternalControlLoop
+    from orchestrator.agent_registry import AgentRegistry
+    task_id = request.json.get("task_id")
+    loop = ExternalControlLoop(os.path.dirname(os.path.dirname(__file__)), AgentRegistry())
+    result = loop.verify_and_update(task_id)
+    return {"success": result.success, "errors": result.errors, "warnings": result.warnings}
+
+
+@app.route("/orchestrator/create_task", methods=["POST"])
+def orchestrator_create_task():
+    from orchestrator.task_card import create_task_card
+    data = request.json or {}
+    card = create_task_card(
+        title=data.get("title", ""),
+        description=data.get("description", ""),
+        zone=data.get("zone", "model"),
+        verification_criteria=data.get("criteria", []),
+        metadata=data.get("metadata"),
+    )
+    return {"task_id": card.task_id, "status": card.status.value}
+
+
+@app.route("/orchestrator/set_status", methods=["POST"])
+def orchestrator_set_status():
+    from orchestrator.task_card import load_task_card, TaskStatus
+    task_id = request.json.get("task_id")
+    status_val = request.json.get("status")
+    card = load_task_card(task_id)
+    if not card:
+        return {"error": "Task not found"}, 404
+    card.status = TaskStatus(status_val)
+    card.agent_id = request.json.get("agent_id", "")
+    card.save()
+    return {"task_id": task_id, "status": card.status.value}
 
 if __name__ == "__main__":
     # Production server is started via scripts/run_server.py

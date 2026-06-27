@@ -33,7 +33,8 @@ SENTINEL_RULES: Dict[str, Tuple[str, str, str]] = {
 
 ONLINE_GUARD_EXEMPT: Set[str] = {
     "offline", "rule_offline", "match_state", "rule_match_state",
-    "config_state", "rule_config_state",
+    "config_state", "rule_config_state", "wan_disconnected", "rule_wan_disconnected",
+    "frequent_falls", "rule_frequent_falls",
 }
 
 

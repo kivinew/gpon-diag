@@ -1,0 +1,23 @@
+{
+  "task_id": "Tbee81eeb",
+  "title": "Add rule for temperature check",
+  "description": "New diagnostic rule for overheating ONT",
+  "zone": "engine",
+  "agent_id": "agent_claude",
+  "status": "revision_required",
+  "created_at": 1782577645.3172019,
+  "updated_at": 1782577645.3172019,
+  "verification_criteria": [
+    "must have is_online guard",
+    "must use Thresholds"
+  ],
+  "result": {},
+  "errors": [
+    "Rule 'rule_long_distance' missing is_online guard",
+    "Rule 'rule_wan_disconnected' missing is_online guard",
+    "Rule 'rule_frequent_falls' missing is_online guard"
+  ],
+  "revision_count": 1,
+  "max_revisions": 3,
+  "metadata": {}
+}

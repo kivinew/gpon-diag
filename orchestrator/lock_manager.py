@@ -13,7 +13,8 @@ import os
 import threading
 import time
 from contextlib import contextmanager
-from typing import Dict, Generator, List, Optional
+from dataclasses import dataclass, field
+from typing import Dict, Generator, List, Optional, Tuple
 
 import importlib.util
 
@@ -84,3 +85,49 @@ def _unlock(resource_id: str):
         os.rmdir(lock_path)
     except OSError:
         pass
+
+
+@contextmanager
+def file_lock(resource_id: str, owner: str = "") -> Generator[None, None, None]:
+    if not _lock(resource_id):
+        raise LockTimeoutError(f"Could not acquire lock for '{resource_id}'")
+    try:
+        yield
+    finally:
+        _unlock(resource_id)
+
+
+@dataclass
+class ZoneLock:
+    zone: str
+    owner: str
+    acquired_at: float = field(default_factory=time.time)
+
+
+class ZoneLockManager:
+    """Manages locks for zones and files with deadlock detection."""
+
+    def __init__(self) -> None:
+        self._locks: Dict[str, ZoneLock] = {}
+        self._lock = threading.RLock()
+
+    def acquire_zone(self, zone: str, owner: str, timeout: float = _LOCK_TIMEOUT) -> bool:
+        with self._lock:
+            if zone in self._locks:
+                return False
+            self._locks[zone] = ZoneLock(zone=zone, owner=owner)
+            return True
+
+    def release_zone(self, zone: str, owner: str) -> None:
+        with self._lock:
+            lock = self._locks.get(zone)
+            if lock and lock.owner == owner:
+                del self._locks[zone]
+
+    def is_locked(self, zone: str) -> Optional[str]:
+        with self._lock:
+            lock = self._locks.get(zone)
+            if lock and time.time() - lock.acquired_at > _LOCK_TIMEOUT:
+                del self._locks[zone]
+                return None
+            return lock.owner if lock else None

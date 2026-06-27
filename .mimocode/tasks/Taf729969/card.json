@@ -1,0 +1,19 @@
+{
+  "task_id": "Taf729969",
+  "title": "External Control Loop",
+  "description": "Develop verification system",
+  "zone": "model",
+  "agent_id": "",
+  "status": "pending",
+  "created_at": 1782577226.2967474,
+  "updated_at": 1782577226.2967474,
+  "verification_criteria": [
+    "check_code",
+    "run_tests"
+  ],
+  "result": {},
+  "errors": [],
+  "revision_count": 0,
+  "max_revisions": 3,
+  "metadata": {}
+}

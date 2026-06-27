@@ -127,7 +127,7 @@ def rule_overheating(metrics, t):
 
 
 def rule_long_distance(metrics, t):
-    if metrics.distance_m < 0:
+    if not metrics.is_online or metrics.distance_m < 0:
         return None
     if metrics.distance_m >= t.distance_crit:
         return DiagnosisProblem("warning", "optic", f"Критическое расстояние: {metrics.distance_m} м (предел 20000 м)", "Проверить оптический бюджет")
@@ -220,6 +220,8 @@ def create_default_engine(thresholds: Thresholds) -> DiagnosticEngine:
 
 def rule_wan_disconnected(metrics, t):
     """Check for disconnected WAN connections."""
+    if not metrics.is_online:
+        return None
     problems = []
     if not hasattr(metrics, 'wan_connections') or not metrics.wan_connections:
         return None
@@ -291,6 +293,8 @@ def rule_no_description(metrics, t):
 
 def rule_frequent_falls(metrics, t):
     """Check if ONT falls frequently (2+ times within 1 hour)."""
+    if not metrics.is_online:
+        return None
     if not hasattr(metrics, 'register_all_downtimes') or not metrics.register_all_downtimes:
         return None
     import datetime as _dt
