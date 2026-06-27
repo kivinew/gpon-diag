@@ -19,7 +19,7 @@ from .agent_registry import (
     ZONE_MODEL,
     ZONE_CONNECTION,
     ZONE_REPORT,
-    "ZONE_WEB",
+    ZONE_WEB,
     ZONE_CLI,
     PROTECTED_FILES,
 )

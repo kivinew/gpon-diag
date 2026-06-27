@@ -386,7 +386,7 @@ class OuterLoopController:
         validators_run = []
 
         # 1. StructureValidator — всегда
-        if spec.validation_level >= ValidationLevel.NONE:
+        if spec.validation_level.value >= ValidationLevel.NONE.value:
             errors = self.structure_validator.check_file_exists(self.project_root)
             if errors:
                 all_errors.extend([f"Structure: {e}" for e in errors])
@@ -396,7 +396,7 @@ class OuterLoopController:
             validators_run.append("StructureValidator")
 
         # 2. SentinelValidator — BASIC и выше
-        if spec.validation_level >= ValidationLevel.BASIC:
+        if spec.validation_level.value >= ValidationLevel.BASIC.value:
             engine_path = f"{self.project_root}/core/engine.py"
             models_path = f"{self.project_root}/core/models.py"
 
@@ -410,7 +410,7 @@ class OuterLoopController:
             validators_run.append("SentinelValidator")
 
         # 3. RuleValidator — STRICT и выше
-        if spec.validation_level >= ValidationLevel.STRICT:
+        if spec.validation_level.value >= ValidationLevel.STRICT.value:
             engine_path = f"{self.project_root}/core/engine.py"
 
             errors = self.rule_validator.check_online_guard(engine_path)
@@ -427,7 +427,7 @@ class OuterLoopController:
             validators_run.append("RuleValidator")
 
         # 4. FULL — категории и дополнительные проверки
-        if spec.validation_level >= ValidationLevel.FULL:
+        if spec.validation_level.value >= ValidationLevel.FULL.value:
             engine_path = f"{self.project_root}/core/engine.py"
             categories = self.rule_validator.check_categories(engine_path)
             if not categories:
