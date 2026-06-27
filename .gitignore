@@ -12,6 +12,10 @@ wheels/
 # IDE
 .idea/
 .vscode/
+.vscode/
+.mimocode/
+.cline/
+.qwen/
 *.swp
 *.swo
 
