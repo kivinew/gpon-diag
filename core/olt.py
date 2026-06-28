@@ -354,7 +354,7 @@ class OltConnection:
         return output
 
     def find_ont_by_sn(self, serial):
-        output = self.send_command(f"display ont info by-sn {serial}", max_more=0)
+        output = self.send_command(f"display ont info by-sn {serial}", max_more=-1)
         return self._parse_fsp(output)
 
     def find_ont_by_description(self, description):

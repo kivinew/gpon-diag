@@ -454,37 +454,13 @@
     }
 
 function renderDiagResult(reportText) {
+        console.log('[DEBUG] renderDiagResult called');
         els.historyDuringDiagnosis.style.display = 'none';
-        els.diagContent.innerHTML = `
-            <div class="diag-report-header">
-                <h3>Результат диагностики</h3>
-                <div class="diag-report-actions">
-                    <button class="btn-copy" onclick="copyReport()">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                        </svg>
-                        Копировать
-                    </button>
-                </div>
-            </div>
-            <div class="diag-report" id="diagReport">${escapeHtml(reportText)}</div>
-        `;
+        els.diagContent.innerHTML = '<div class="diag-report-header"><h3>Результат диагностики</h3><div class="diag-report-actions"><button class="btn-copy" onclick="copyReport()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg> Копировать</button></div></div><div class="diag-report" id="diagReport">' + escapeHtml(reportText) + '</div>';
     }
 
     function renderDiagError(message) {
-        els.diagContent.innerHTML = `
-            <div class="diag-empty">
-                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                    <circle cx="12" cy="12" r="10"></circle>
-                    <line x1="15" y1="9" x2="9" y2="15"></line>
-                    <line x1="9" y1="9" x2="15" y2="15"></line>
-                </svg>
-                <p>Ошибка диагностики</p>
-                <div class="flash-msg error" style="max-width: 400px; text-align: left;">${escapeHtml(message)}</div>
-                <button class="btn-primary" onclick="location.reload()">Повторить</button>
-            </div>
-        `;
+        els.diagContent.innerHTML = '<div class="diag-empty"><svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"></circle><line x1="15" y1="9" x2="9" y2="15"></line><line x1="9" y1="9" x2="15" y2="15"></line></svg><p>Error</p><div class="flash-msg error" style="max-width: 400px; text-align: left;">' + escapeHtml(message) + '</div><button class="btn-primary" onclick="location.reload()">Retry</button></div>';
     }
 
     // Global for inline onclick
@@ -524,7 +500,7 @@ function renderDiagResult(reportText) {
 
     async function loadHistoryForOnt(ontAddress) {
         try {
-            const response = await fetch(`/api/history?q=${encodeURIComponent(ontAddress)}&limit=10`);
+            const response = await fetch('/api/history?q=' + encodeURIComponent(ontAddress) + '&limit=10');
             const data = await response.json();
             // Could show in detail panel
         } catch (err) {
@@ -534,51 +510,41 @@ function renderDiagResult(reportText) {
 
     function renderHistory() {
         const filter = els.historyFilter.value.toLowerCase();
-        const filtered = state.historyData.filter(row => {
+        const filtered = state.historyData.filter(function(row) {
             if (!filter) return true;
-            const searchText = `${row.olt_name} ${row.ont_address} ${row.input_value} ${row.olt_host}`.toLowerCase();
+            const searchText = (row.olt_name + ' ' + row.ont_address + ' ' + row.input_value + ' ' + row.olt_host).toLowerCase();
             return searchText.includes(filter);
         });
 
-        els.historyBody.innerHTML = filtered.map(row => {
-            let statusBadge = '';
-            let problemsCount = '<span class="problems-count ok">0</span>';
+        els.historyBody.innerHTML = filtered.map(function(row) {
+            var statusBadge = '';
+            var problemsCount = '<span class="problems-count ok">0</span>';
 
             try {
-                // API returns 'report' (already parsed), but server-rendered data may have 'report_json'
-                const report = row.report || {};
+                var report = row.report || {};
                 if (report.is_online === false) {
                     statusBadge = '<span class="status-badge online">ONLINE</span>';
                 } else {
                     statusBadge = '<span class="status-badge offline">OFFLINE</span>';
                 }
                 if (report.problems && report.problems.length > 0) {
-                    problemsCount = `<span class="problems-count">${report.problems.length}</span>`;
+                    problemsCount = '<span class="problems-count">' + report.problems.length + '</span>';
                 }
             } catch (e) {}
 
-            return `
-                <tr class="history-row" data-id="${row.id}" data-input="${escapeHtml(row.input_value)}" data-olt-host="${escapeHtml(row.olt_host)}">
-                    <td>${escapeHtml(row.created_at)}</td>
-                    <td>${escapeHtml(row.olt_name)} (${escapeHtml(row.olt_host)})</td>
-                    <td>${escapeHtml(row.ont_address)}</td>
-                    <td>${escapeHtml(row.input_value)}</td>
-                    <td>${statusBadge}</td>
-                    <td>${problemsCount}</td>
-                </tr>
-            `;
+            return '<tr class="history-row" data-id="' + row.id + '" data-input="' + escapeHtml(row.input_value) + '" data-olt-host="' + escapeHtml(row.olt_host) + '" data-ont-address="' + escapeHtml(row.ont_address) + '"><td>' + escapeHtml(row.created_at) + '</td><td>' + escapeHtml(row.olt_name) + ' (' + escapeHtml(row.olt_host) + ')</td><td>' + escapeHtml(row.ont_address) + '</td><td>' + escapeHtml(row.input_value) + '</td><td>' + statusBadge + '</td><td>' + problemsCount + '</td></tr>';
         }).join('');
 
         attachHistoryRowHandlers();
     }
 
 function attachHistoryRowHandlers() {
-        els.historyBody.querySelectorAll('.history-row').forEach(row => {
-            row.addEventListener('click', async () => {
-                const diagId = row.dataset.id;
-                const inputValue = row.dataset.input;
-                const oltHost = row.dataset.oltHost;
-                const ontAddress = row.dataset.ontAddress;
+        els.historyBody.querySelectorAll('.history-row').forEach(function(row) {
+            row.addEventListener('click', async function() {
+                var diagId = row.dataset.id;
+                var inputValue = row.dataset.input;
+                var oltHost = row.dataset.oltHost;
+                var ontAddress = row.dataset.ontAddress;
 
                 // Populate search fields
                 els.searchInput.value = inputValue;
@@ -587,14 +553,16 @@ function attachHistoryRowHandlers() {
                     state.currentOlt = oltHost;
                 }
 
-                // Load and display report from DB history
                 try {
-                    const detailResp = await fetch(`/api/history/${diagId}`);
-                    const detailData = await detailResp.json();
+                    var detailResp = await fetch('/api/history/' + diagId);
+                    var detailData = await detailResp.json();
 
                     if (detailData.report) {
-                        const reportText = formatReportForDisplay(detailData.report);
-                        renderDiagResult(reportText);
+                        var reportText = formatReportForDisplay(detailData.report);
+                        els.detailTitle.textContent = detailData.olt_name + ' — История';
+                        showDetail();
+                        showTab('summary');
+                        els.detailContent.innerHTML = '<div class="diag-report-header"><h3>' + escapeHtml(detailData.created_at) + ' · ' + escapeHtml(detailData.olt_name) + '</h3></div><div class="diag-report" id="report">' + escapeHtml(reportText) + '</div>';
                         state.currentDiagnosis = {
                             address: detailData.ont_address,
                             olt_host: detailData.olt_host,
@@ -602,121 +570,88 @@ function attachHistoryRowHandlers() {
                         };
                     }
 
-                    // Load related history for the same ONT (multiple search strategies)
-                    const searchTerms = [
-                        ontAddress, 
-                        detailData.ont_address, 
-                        detailData.input_value,
-                        detailData.report?.serial
-                    ].filter(Boolean);
+                    // Show "История диагностики" - always show at least current item
+                    var currentItem = {
+                        id: detailData.id,
+                        ont_address: detailData.ont_address,
+                        olt_name: detailData.olt_name,
+                        created_at: detailData.created_at,
+                        report: detailData.report || {}
+                    };
 
-                    // Show "Предыдущие результаты" with at least current item
-                    let historyItems = [{id: diagId, ...detailData}];
+                    var searchTerms = [ontAddress, detailData.ont_address].filter(Boolean);
+                    var historyItems = [currentItem];
                     
-                    if (searchTerms.length > 0) {
-                        // Try each search term until we find additional matches
-                        for (const term of searchTerms) {
-                            const historyResp = await fetch(`/api/history?q=${encodeURIComponent(term)}&limit=10`);
-                            const historyData = await historyResp.json();
+                    for (const term of searchTerms) {
+                        try {
+                            var historyResp = await fetch('/api/history?q=' + encodeURIComponent(term) + '&limit=10');
+                            var historyData = await historyResp.json();
                             if (historyData.history && historyData.history.length > 0) {
-                                // Merge found items (avoid duplicates by id)
-                                const existingIds = new Set(historyItems.map(h => h.id));
-                                historyItems = [
-                                    ...historyItems,
-                                    ...historyData.history.filter(h => !existingIds.has(h.id))
-                                ];
+                                var existingIds = new Set(historyItems.map(function(h) { return h.id; }));
+                                historyItems = historyItems.concat(
+                                    historyData.history.filter(function(h) { return !existingIds.has(h.id); })
+                                );
                             }
-                        }
+                        } catch (_) {}
                     }
-                    
-                    if (historyItems.length > 0) {
-                        renderHistoryDuringDiagnosis(historyItems);
-                    } else {
-                        els.historyDuringDiagnosis.style.display = 'none';
-                    }
+
+                    renderHistoryDuringDiagnosis(historyItems);
                 } catch (e) {
                     console.error('Failed to load history detail:', e);
-                    els.historyDuringDiagnosis.style.display = 'none';
+                    const target = els.historyDuringDiagnosis;
+                    if (target) target.style.display = 'none';
                 }
-                // Refresh history list after selection
                 await loadHistory();
             });
         });
     }
 
+    // ============================================================
+    // History During Diagnosis
+    // ============================================================
     function renderHistoryDuringDiagnosis(historyItems) {
-        els.historyDuringDiagnosis.style.display = 'block';
-        const summaryParts = [];
-        historyItems.forEach(item => {
-            const r = item.report || {};
-            const statusBadge = r.is_online !== false
+        var target = els.historyDuringDiagnosis;
+        if (!target) {
+            console.error('[DEBUG] historyDuringDiagnosis element not found!');
+            return;
+        }
+        if (!historyItems || historyItems.length === 0) {
+            target.style.display = 'none';
+            return;
+        }
+        target.style.display = 'flex';
+        target.style.flexDirection = 'column';
+        var summaryParts = [];
+        historyItems.forEach(function(item) {
+            var r = item.report || {};
+            var statusBadge = r.is_online !== false
                 ? '<span class="history-status online">ОНЛАЙН</span>'
                 : '<span class="history-status offline">ОФФЛАЙН</span>';
-            const problemsCount = (r.problems || []).length;
-            summaryParts.push(`
-                <div class="history-during-item">
-                    <span class="history-date">${escapeHtml(item.created_at)}</span>
-                    ${statusBadge}
-                    ${problemsCount > 0 ? `<span class="history-problems">${problemsCount} проблем</span>` : ''}
-                    <span class="history-olt">${escapeHtml(item.olt_name)}</span>
-                </div>
-            `);
+            var problemsCount = (r.problems || []).length;
+            summaryParts.push('<div class="history-during-item"><span class="history-date">' + escapeHtml(item.created_at || '—') + '</span>' + statusBadge + (problemsCount > 0 ? '<span class="history-problems">' + problemsCount + ' проблем</span>' : '') + '<span class="history-olt">' + escapeHtml(item.olt_name || '—') + '</span></div>');
         });
-        els.historyDuringDiagnosis.innerHTML = `
-            <div class="result-header"><h1>Предыдущие результаты (${historyItems.length})</h1></div>
-            <div class="history-during-items">${summaryParts.join('')}</div>
-        `;
-    }
-
-    els.historyFilter.addEventListener('input', renderHistory);
-    els.historyLimit.addEventListener('change', loadHistory);
-
-    async function loadHistoricalReport(diagId) {
-        try {
-            const response = await fetch(`/api/history/${diagId}`);
-            const data = await response.json();
-            if (data.error) {
-                alert(data.error);
-                return;
-            }
-
-            const report = data.report || {};
-            const reportText = formatReportForDisplay(report);
-
-            // Show in detail panel
-            els.detailTitle.textContent = `${data.olt_name} — История`;
-            showDetail();
-            showTab('summary');
-            els.detailContent.innerHTML = `
-                <div class="diag-report-header">
-                    <h3>${escapeHtml(data.created_at)} · ${escapeHtml(data.olt_name)}</h3>
-                </div>
-                <div class="diag-report" id="report">${escapeHtml(reportText)}</div>
-            `;
-        } catch (err) {
-            console.error('Historical report error:', err);
-            alert('Ошибка загрузки отчёта: ' + err.message);
-        }
+        target.innerHTML = '<div class="result-header"><h1>Предыдущие результаты (' + historyItems.length + ')</h1></div><div class="history-during-items">' + summaryParts.join('') + '</div>';
     }
 
     // ============================================================
     // Detail Panel Tabs
     // ============================================================
-    function showTab(tabName) {
-        els.detailTabs.forEach(btn => {
+        els.detailTabs.forEach(function(btn) {
             btn.classList.toggle('active', btn.dataset.tab === tabName);
         });
 
-        const panels = document.querySelectorAll('.detail-panel');
-        panels.forEach(p => p.classList.toggle('active', p.dataset.tab === tabName));
+        var panels = document.querySelectorAll('.detail-panel');
+        panels.forEach(function(p) {
+            p.classList.toggle('active', p.dataset.tab === tabName);
+        });
 
         if (tabName === 'optics' && state.selectedOnt) {
             fetchOptics(state.selectedOnt);
         }
     }
 
-    els.detailTabs.forEach(btn => {
-        btn.addEventListener('click', () => showTab(btn.dataset.tab));
+    els.detailTabs.forEach(function(btn) {
+        btn.addEventListener('click', function() { showTab(btn.dataset.tab); });
     });
 
     els.closeDetail.addEventListener('click', hideDetail);
@@ -726,10 +661,7 @@ function attachHistoryRowHandlers() {
     // ============================================================
     function formatReportForDisplay(report) {
         const lines = [];
-        // Support both ont and ont_address field names
-        const ont = report.ont || report.ont_address || '—';
-        const headStation = report.head_station || '—';
-        if (headStation && headStation !== '—') lines.push('Головная станция: ' + headStation + ' | ONT = ' + ont);
+        if (report.head_station) lines.push('Головная станция: ' + report.head_station + ' | ONT = ' + report.ont);
         if (report.serial) lines.push('PON SN = ' + report.serial);
         if (report.description && report.description !== 'ONT_NO_DESCRIPTION') {
             lines.push('Дескрипшн (лицевой счёт) = ' + report.description);
