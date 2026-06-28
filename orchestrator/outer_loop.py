@@ -159,6 +159,22 @@ class OuterLoopController:
             logger.info(f"Task '{spec.task_id}' registered for zone '{spec.zone}'")
             return spec.task_id
 
+    def remove_task(self, task_id: str) -> None:
+        """Удаляет задачу из очереди, если она ещё не завершена.
+
+        Если задача уже находится в статусе COMPLETED, FAILED или
+        RETRY_EXHAUSTED – будет выброшено исключение, чтобы избежать
+        потери результатов.
+        """
+        with self._tasks_lock:
+            execution = self._tasks.get(task_id)
+            if not execution:
+                raise ValueError(f"Task '{task_id}' not found")
+            if execution.status in (TaskStatus.COMPLETED, TaskStatus.FAILED, TaskStatus.RETRY_EXHAUSTED):
+                raise ValueError(f"Cannot remove completed task '{task_id}'")
+            del self._tasks[task_id]
+            logger.info(f"Task '{task_id}' removed from queue")
+
     def run_task(self, task_id: str, blocking: bool = True) -> ValidationResult:
         """
         Запускает внешний цикл для задачи.

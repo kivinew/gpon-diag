@@ -567,16 +567,39 @@
 
     function attachHistoryRowHandlers() {
         els.historyBody.querySelectorAll('.history-row').forEach(row => {
-            row.addEventListener('click', () => {
+            row.addEventListener('click', async () => {
                 const diagId = row.dataset.id;
                 const inputValue = row.dataset.input;
                 const oltHost = row.dataset.oltHost;
 
-                // Select in search if available
+                // Populate search fields
                 els.searchInput.value = inputValue;
                 if (oltHost) {
                     els.oltSelect.value = oltHost;
                     state.currentOlt = oltHost;
+                }
+                // Load and display detailed history record
+                try {
+                        const resp = await fetch(`/api/history/${diagId}`);
+                        const data = await resp.json();
+                        if (data.report) {
+                            // Show as if it were a fresh diagnosis result, using same formatting
+                            const formatted = formatReportForDisplay(data.report);
+                            renderDiagResult(formatted);
+                            state.currentDiagnosis = {
+                                address: data.ont_address,
+                                olt_host: data.olt_host,
+                                report: data.report
+                            };
+                        }
+                } catch (e) {
+                    console.error('Failed to load history detail:', e);
+                }
+                // Optionally refresh history list
+                await loadHistory();
+            });
+        });
+    }
                     els.currentOlt.textContent = `OLT: ${oltHost}`;
                 }
 

@@ -13,6 +13,7 @@ Usage:
 import argparse
 import json
 import logging
+from orchestrator import AgentRegistry, register_builtin_agents
 import os
 import re
 import sys
@@ -51,6 +52,10 @@ from core.olt import get_olt_connection, close_all, OntNotFoundError
 
 logging.basicConfig(level=logging.WARNING, format='%(levelname)s: %(message)s')
 logger = logging.getLogger(__name__)
+
+# Initialize default AI agents for orchestration
+_registry = AgentRegistry()
+register_builtin_agents(_registry)
 
 MAC_DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "oui.txt")
 

@@ -7,6 +7,9 @@ Components:
 - lock_manager: блокировка файлов и зон
 - validator: валидация структуры кода
 - outer_loop: внешний цикл контроля за работой агентов
+
+Utility:
+- register_builtin_agents(): registers default AI agents (claude, qwen, cline).
 """
 
 from .agent_registry import (
@@ -50,6 +53,45 @@ from .outer_loop import (
     run_task_with_outer_loop,
 )
 
+# ---------------------------------------------------------------------------
+# Built‑in AI agent registration helper
+# ---------------------------------------------------------------------------
+def register_builtin_agents(registry: AgentRegistry) -> None:
+    """Register the default AI agents used by the framework.
+
+    The three agents are identified by a short name and are assigned to
+    logical zones that reflect their typical responsibilities:
+
+    * ``claude`` – analysis & code‑review zone (``ZONE_PARSER``)
+    * ``qwen``   – rule‑engine / diagnostics zone (``ZONE_ENGINE``)
+    * ``cline``  – CLI orchestration zone (``ZONE_CLI``)
+
+    Each registration includes a short ``metadata`` map that can be used by
+    external monitoring tools.
+    """
+    agents = [
+        ("claude", ZONE_PARSER, ["core/parser.py"], {"role": "code_review"}),
+        ("qwen", ZONE_ENGINE, ["core/engine.py"], {"role": "diagnostics"}),
+        ("cline", ZONE_CLI, ["diagnose.py"], {"role": "cli_orchestrator"}),
+    ]
+    for aid, zone, files, meta in agents:
+        try:
+            registry.register(agent_id=aid, zone=zone, files_intended=files, metadata=meta)
+        except Exception as exc:  # pragma: no cover – defensive, should not happen in normal flow
+            # Log but do not raise – registration is idempotent per process run.
+            import logging
+
+            logging.getLogger(__name__).warning("Failed to register agent %s: %s", aid, exc)
+
+def delete_task_from_queue(controller: OuterLoopController, task_id: str) -> None:
+    """Remove a task from the orchestrator's queue.
+
+    This is a thin wrapper around ``OuterLoopController.remove_task``.
+    It raises the same ``ValueError`` if the task cannot be removed.
+    """
+    controller.remove_task(task_id)
+
+
 __all__ = [
     # agent_registry
     "AgentRegistry",
@@ -84,4 +126,7 @@ __all__ = [
     "ValidationLevel",
     "create_outer_loop_controller",
     "run_task_with_outer_loop",
+    "delete_task_from_queue",
+    "register_builtin_agents",
 ]
+
