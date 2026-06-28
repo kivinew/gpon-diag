@@ -44,6 +44,7 @@
         // Diagnostics
         diagContent: document.getElementById('diagContent'),
         runDiagBtn: document.getElementById('runDiagBtn'),
+        historyDuringDiagnosis: document.getElementById('historyDuringDiagnosis'),
 
         // History
         historyFilter: document.getElementById('historyFilter'),
@@ -410,7 +411,8 @@
                                 break;
 
                             case 'history':
-                                // History received
+                                // Save history to display after result
+                                window.savedHistory = msg.history;
                                 break;
 
                             case 'result':
@@ -421,6 +423,10 @@
                                 hideOverlay();
                                 els.runDiagBtn.disabled = false;
                                 renderDiagResult(msg.report);
+                                // Show history-during-diagnosis if we have history
+                                if (window.savedHistory && window.savedHistory.length > 0) {
+                                    renderHistoryDuringDiagnosis(window.savedHistory);
+                                }
                                 // Save for detail panel
                                 state.currentDiagnosis = {
                                     ...ont,
@@ -447,7 +453,8 @@
         }
     }
 
-    function renderDiagResult(reportText) {
+function renderDiagResult(reportText) {
+        els.historyDuringDiagnosis.style.display = 'none';
         els.diagContent.innerHTML = `
             <div class="diag-report-header">
                 <h3>Результат диагностики</h3>
@@ -571,6 +578,7 @@ function attachHistoryRowHandlers() {
                 const diagId = row.dataset.id;
                 const inputValue = row.dataset.input;
                 const oltHost = row.dataset.oltHost;
+                const ontAddress = row.dataset.ontAddress;
 
                 // Populate search fields
                 els.searchInput.value = inputValue;
@@ -578,20 +586,57 @@ function attachHistoryRowHandlers() {
                     els.oltSelect.value = oltHost;
                     state.currentOlt = oltHost;
                 }
-                // Load and display brief report from DB history
+
+                // Load and display report from DB history
                 try {
-                    const resp = await fetch(`/api/history/${diagId}`);
-                    const data = await resp.json();
-                    if (data.report) {
-                        renderBriefReport(data.report);
+                    const detailResp = await fetch(`/api/history/${diagId}`);
+                    const detailData = await detailResp.json();
+
+                    if (detailData.report) {
+                        const reportText = formatReportForDisplay(detailData.report);
+                        renderDiagResult(reportText);
                         state.currentDiagnosis = {
-                            address: data.ont_address,
-                            olt_host: data.olt_host,
-                            report: data.report
+                            address: detailData.ont_address,
+                            olt_host: detailData.olt_host,
+                            report: detailData.report
                         };
+                    }
+
+                    // Load related history for the same ONT (multiple search strategies)
+                    const searchTerms = [
+                        ontAddress, 
+                        detailData.ont_address, 
+                        detailData.input_value,
+                        detailData.report?.serial
+                    ].filter(Boolean);
+
+                    // Show "Предыдущие результаты" with at least current item
+                    let historyItems = [{id: diagId, ...detailData}];
+                    
+                    if (searchTerms.length > 0) {
+                        // Try each search term until we find additional matches
+                        for (const term of searchTerms) {
+                            const historyResp = await fetch(`/api/history?q=${encodeURIComponent(term)}&limit=10`);
+                            const historyData = await historyResp.json();
+                            if (historyData.history && historyData.history.length > 0) {
+                                // Merge found items (avoid duplicates by id)
+                                const existingIds = new Set(historyItems.map(h => h.id));
+                                historyItems = [
+                                    ...historyItems,
+                                    ...historyData.history.filter(h => !existingIds.has(h.id))
+                                ];
+                            }
+                        }
+                    }
+                    
+                    if (historyItems.length > 0) {
+                        renderHistoryDuringDiagnosis(historyItems);
+                    } else {
+                        els.historyDuringDiagnosis.style.display = 'none';
                     }
                 } catch (e) {
                     console.error('Failed to load history detail:', e);
+                    els.historyDuringDiagnosis.style.display = 'none';
                 }
                 // Refresh history list after selection
                 await loadHistory();
@@ -599,15 +644,28 @@ function attachHistoryRowHandlers() {
         });
     }
 
-    function renderBriefReport(report) {
-        const status = report.is_online ? '<span class="status-badge online">ONLINE</span>' : '<span class="status-badge offline">OFFLINE</span>';
-        const problems = report.problems && report.problems.length ? report.problems.length : 0;
-        const problemsBadge = problems ? `<span class="problems-count">${problems}</span>` : '<span class="problems-count ok">0</span>';
-        els.diagContent.innerHTML = `
-            <div class="brief-report">
-                <div>Статус: ${status} — Проблем: ${problemsBadge}</div>
-                <pre class="report-json">${escapeHtml(JSON.stringify(report, null, 2))}</pre>
-            </div>`;
+    function renderHistoryDuringDiagnosis(historyItems) {
+        els.historyDuringDiagnosis.style.display = 'block';
+        const summaryParts = [];
+        historyItems.forEach(item => {
+            const r = item.report || {};
+            const statusBadge = r.is_online !== false
+                ? '<span class="history-status online">ОНЛАЙН</span>'
+                : '<span class="history-status offline">ОФФЛАЙН</span>';
+            const problemsCount = (r.problems || []).length;
+            summaryParts.push(`
+                <div class="history-during-item">
+                    <span class="history-date">${escapeHtml(item.created_at)}</span>
+                    ${statusBadge}
+                    ${problemsCount > 0 ? `<span class="history-problems">${problemsCount} проблем</span>` : ''}
+                    <span class="history-olt">${escapeHtml(item.olt_name)}</span>
+                </div>
+            `);
+        });
+        els.historyDuringDiagnosis.innerHTML = `
+            <div class="result-header"><h1>Предыдущие результаты (${historyItems.length})</h1></div>
+            <div class="history-during-items">${summaryParts.join('')}</div>
+        `;
     }
 
     els.historyFilter.addEventListener('input', renderHistory);
@@ -668,7 +726,10 @@ function attachHistoryRowHandlers() {
     // ============================================================
     function formatReportForDisplay(report) {
         const lines = [];
-        if (report.head_station) lines.push('Головная станция: ' + report.head_station + ' | ONT = ' + report.ont);
+        // Support both ont and ont_address field names
+        const ont = report.ont || report.ont_address || '—';
+        const headStation = report.head_station || '—';
+        if (headStation && headStation !== '—') lines.push('Головная станция: ' + headStation + ' | ONT = ' + ont);
         if (report.serial) lines.push('PON SN = ' + report.serial);
         if (report.description && report.description !== 'ONT_NO_DESCRIPTION') {
             lines.push('Дескрипшн (лицевой счёт) = ' + report.description);

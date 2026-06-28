@@ -358,7 +358,7 @@ class OltConnection:
         return self._parse_fsp(output)
 
     def find_ont_by_description(self, description):
-        output = self.send_command(f"display ont info by-desc {description}", max_more=0)
+        output = self.send_command(f"display ont info by-desc {description}", max_more=-1)
         return self._parse_fsp(output)
 
     @staticmethod

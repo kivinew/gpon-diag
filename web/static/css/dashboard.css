@@ -1088,3 +1088,51 @@ body {
 ::-webkit-scrollbar-thumb:hover {
     background: #475569;
 }
+
+/* --- History during diagnosis --- */
+.history-during-diagnosis {
+    margin-top: 20px;
+    background: rgba(15,23,42,0.6);
+    border: 1px solid rgba(56,189,248,0.12);
+    border-radius: 12px;
+    padding: 16px;
+}
+
+.history-during-items {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.history-during-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 13px;
+    padding: 8px 12px;
+    background: rgba(30,41,59,0.5);
+    border-radius: 8px;
+}
+
+.history-during-item .history-status {
+    font-size: 11px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-weight: 600;
+}
+
+.history-during-item .history-status.online {
+    background: rgba(74,222,128,0.1);
+    color: #4ade80;
+}
+
+.history-during-item .history-status.offline {
+    background: rgba(239,68,68,0.1);
+    color: #f87171;
+}
+
+.history-during-item .history-problems {
+    font-size: 11px;
+    color: #f87171;
+}

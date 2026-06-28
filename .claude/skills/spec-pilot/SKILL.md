@@ -1,135 +1,111 @@
 ---
 name: spec-pilot
-description: Use whenever the user asks Claude Code to build, create, or implement something non-trivial from a short or vague request — e.g. "собери бота на заявки", "хочу фичу авторизации", "сделай лендинг под запись", "build me a dashboard". Also activate on an explicit `spec-pilot:` prefix. Runs the build in the proven order — interview the user, write a spec, get explicit approval, then delegate to sub-agents, then self-verify — and holds a rule to never start parallel agents before an approved spec, so the user doesn't burn tokens on guesswork. Do NOT trigger for trivial one-step edits (rename, fix a typo, tweak spacing), for non-build operations (running a build, commits, applying review fixes, writing a summary), or for "automate this" requests. When unsure whether a request is trivial or a real build, ask one scoping question first.
+description: Use whenever the user asks Claude Code to build, create, or implement something non-trivial from a short or vague request — e.g. "build a bot for requests", "I want an auth feature", "make a landing page for booking", "build me a dashboard". Also activate on an explicit `spec-pilot:` prefix. Runs the build in the proven order — interview the user, write a spec, get explicit approval, then delegate to sub-agents, then self-verify — and holds a rule to never start parallel agents before an approved spec, so the user doesn't burn tokens on guesswork. Do NOT trigger for trivial one-step edits (rename, fix a typo, tweak spacing), for non-build operations (running a build, commits, applying review fixes, writing a summary), or for "automate this" requests. When unsure whether a request is trivial or a real build, ask one scoping question first.
 ---
 
 # 🧭 spec-pilot
 
-> Автопилот по правильному ПОРЯДКУ работы с Claude Code. Ты говоришь обычными словами
-> (по-русски!), что хочешь собрать — скилл ведёт сборку по порядку: **интервью → спека →
-> саб-агенты → проверка**. И держит правило: **не уходить в параллель, пока спека не
-> утверждена тобой.** Если видишь, что Claude рванул в параллель без твоего «ок» — стоп-фраза
-> в граблях ниже.
->
-> Лид-магнит к ролику «6 фраз для Claude Code» (Никита Велс | AI).
+> Autopilot for the correct ORDER of working with Claude Code. You speak in plain words (in any language!) about what you want to build — the skill runs the build in order: **interview → spec → sub-agents → verify**. And enforces the rule: **don't go parallel until the spec is approved by you.** If you see Claude rush into parallel without your "ok" — stop phrase below.
 
-⚠️ Английские «фразы» (`interview me`, `launch sub agents`…) печатать НЕ нужно — это
-мнемоника из ролика. Пиши задачу обычными словами, скилл сам проведёт по порядку.
+> Lead magnet for the "6 Phrases for Claude Code" video (Nikita Vels | AI).
 
-Шесть «power-фраз» поодиночке почти бесполезны. Сила — в ПОРЯДКЕ. Если запустить
-саб-агентов ДО спеки, каждый начнёт гадать по-своему — и ты получишь не ускорение, а
-несколько параллельных «каш» и перерасход лимита. Этот скилл удерживает порядок и гарды.
+⚠️ English "phrases" (`interview me`, `launch sub agents`…) do NOT need to be typed — they're mnemonics from the video. Write the task in plain words, the skill guides you through the order.
+
+Six "power phrases" alone are almost useless. The power is in the ORDER. If you launch sub-agents BEFORE the spec, each starts guessing their own way — and you get not acceleration but multiple parallel "messes" and limit overrun. This skill holds the order and the guards.
 
 ---
 
-## Когда срабатывать
+## When to Activate
 
-Активируй, когда пользователь по-человечески просит ЧТО-ТО СОБРАТЬ:
-- «собери / сделай / построй мне <бот / приложение / скрипт / лендинг>»
-- «хочу <фичу> в проекте», «помоги реализовать <идею>» — когда деталей мало
-- **`spec-pilot: <задача>`** — явный вызов
+Activate when the user asks in plain language to BUILD SOMETHING:
+- "build / make / create me a <bot / app / script / landing page>"
+- "I want a <feature> in the project", "help implement <idea>" — when details are scarce
+- **`spec-pilot: <task>`** — explicit invocation
 
-**НЕ срабатывай:**
-- тривиальные правки: «переименуй переменную», «поправь отступ», «добавь одну кнопку», «исправь опечатку» — делается напрямую (Гард 1);
-- не-сборочные операции: запустить build, сделать коммит, применить правки ревью, написать резюме/текст;
-- запрос «автоматизируй это» (`automate this`) — это последняя, самая опасная фраза, она НЕ часть конвейера сборки (см. Грабли);
-- сомневаешься, тривиалка это или реальная сборка — **сначала задай один уточняющий вопрос про масштаб**.
+**DO NOT activate:**
+- trivial edits: "rename variable", "fix indent", "add one button", "fix typo" — do directly (Guard 1);
+- non-build operations: run build, make commit, apply review fixes, write summary/text;
+- request "automate this" — this is the last, most dangerous phrase, it's NOT part of the build pipeline (see Gotchas);
+- unsure if trivial or real build — **first ask one clarifying question about scope**.
 
 ---
 
-## 🧠 ГЛАВНОЕ: правильный ПОРЯДОК
+## 🧠 CORE: The Correct ORDER
 
-Один хребет, четыре шага. Каждый следующий опирается на предыдущий — порядок не нарушать.
+One spine, four steps. Each next step builds on the previous — order must not be broken.
 
-| # | Фраза (мнемоника) | Что делает | Почему стоит ЗДЕСЬ |
+| # | Phrase (mnemonic) | What it does | Why HERE |
 |---|---|---|---|
-| 1 | interview me | Claude задаёт ВОПРОСЫ тебе и вытаскивает ТЗ | ты сам не знаешь, какие детали важны — без ответов не из чего строить |
-| 2 | write me a spec | лепит спеку из ответов, показывает на подтверждение | фиксирует ТВОЙ выбор → Claude не перебирает 125 вариантов вслепую |
-| 3 | launch sub agents | делегирует куски ПО СПЕКЕ саб-агентам | скорость — но только когда есть общая утверждённая спека |
-| 4 | verify before build | Claude сам проверяет результат до сдачи | ловит «готово, но не работает» до того, как ты это получил |
+| 1 | interview me | Claude asks YOU questions and extracts the spec | you don't know which details matter — without answers there's nothing to build from |
+| 2 | write me a spec | assembles spec from answers, shows for confirmation | locks in YOUR choices → Claude doesn't blindly try 125 variants |
+| 3 | launch sub agents | delegates chunks PER SPEC to sub-agents | speed — but only when there's a shared approved spec |
+| 4 | verify before build | Claude self-checks result before handoff | catches "done but broken" before you get it |
 
-Фразы 5–6 — этаж выше: **build me a skill** (упаковать удачное в скилл + gotchas) и
-**automate this** (самая опасная — см. Грабли). Они не входят в конвейер сборки.
-
----
-
-## 🛡 ГАРДЫ (выполнять ВСЕГДА)
-
-### Гард 1 — Сначала масштаб задачи (не создавай overhead)
-- **Тривиально** (1 действие, решение очевидно): конвейер НЕ запускаешь. 0 вопросов, делаешь сразу.
-- **Средне** (одна фича, 2–4 неочевидных решения): интервью **≤ 3** вопроса → краткая спека → сборка → проверка.
-- **Крупно** (несколько частей/подсистем): полное интервью → детальная спека → саб-агенты → проверка.
-- **При сомнении между уровнями — бери уровень ВЫШЕ.** Понизить можно только после явного «это мелочь, не гоняй порядок».
-
-### Гард 2 — НИКОГДА не запускай параллельных агентов без утверждённой спеки ⛔ (ядро)
-Параллель без общей спеки = N независимых гаданий, которые должны ещё и совпасть. Это и есть слив лимита.
-- Утверждение спеки = **только явное «да»** пользователя на прямой вопрос «Спека ок? Запускаю сборку?». Молчание, «выглядит ок», «делай как лучше» — это НЕ утверждение, переспроси.
-- Запрет распространяется на **ЛЮБЫЕ параллельные агенты**, включая «разведочных» на этапе интервью.
-- Если пользователь сам просит «запусти саб-агентов / распараллель», а спеки нет — **откажи** и предложи сначала собрать спеку (даже если скилл подхватился случайно).
-- Спеку отклонили — вернись на Шаг 2, уточни, сборку НЕ начинай.
-
-### Гард 3 — Зоны человека (необратимое и внешний мир)
-**СТОП на всём необратимом или затрагивающем реальные ресурсы:** оплата, отправка денег,
-удаление данных, миграции БД, рассылки, деплой/`publish`, `git push --force`, `rm -rf`,
-боевые API-ключи и секреты, webhooks в прод. **Сомневаешься — считай необратимым и спроси.**
-Это касается и саб-агентов на Шаге 3: сами такие действия они не выполняют — только человек, вручную.
-
-### Гард 4 — Бюджет и честность про лимит
-- Саб-агенты тратят **тот же общий лимит**, что обычный чат. Скилл бережёт от перерасхода
-  **на гадании и переделках**, но не делает лимит безграничным.
-- На Pro полная параллель быстро упрётся в 5-часовое окно лимита — это нормально, **иди последовательно по спеке**.
-- Не плоди агентов «на всякий». Дели по спеке только на реально независимые куски.
+Phrases 5–6 are the next level: **build me a skill** (package success into a skill + gotchas) and **automate this** (most dangerous — see Gotchas). They're not part of the build pipeline.
 
 ---
 
-## 📋 АЛГОРИТМ
+## 🛡 GUARDS (ALWAYS enforce)
 
-**Шаг 1 — interview me.** Под масштаб (Гард 1) задай точечные вопросы, вскрывающие ключевые
-решения (какие данные, куда сохранять, краевые случаи, что считать «готово»). Если
-пользователь говорит «на твоё усмотрение» — двигайся, но **проговори допущения**.
+### Guard 1 — Task scope first (no overhead)
+- **Trivial** (1 action, obvious solution): pipeline NOT run. 0 questions, do immediately.
+- **Medium** (one feature, 2–4 non-obvious decisions): interview **≤ 3** questions → brief spec → build → verify.
+- **Large** (multiple parts/subsystems): full interview → detailed spec → sub-agents → verify.
+- **When in doubt between levels — pick HIGHER.** Can only downgrade after explicit "this is trivial, don't run the order".
 
-**Шаг 2 — write me a spec.** Собери короткую спеку: цель, шаги, ключевые решения, критерий
-готовности. **Покажи и дождись явного «да»** (Гард 2). Отклонили — уточняй, не строй.
+### Guard 2 — NEVER launch parallel agents without approved spec ⛔ (core)
+Parallel without shared spec = N independent guesses that must also align. That's the limit burn.
+- Spec approval = **only explicit "yes"** from user to direct question "Spec ok? Launch build?". Silence, "looks ok", "do as you think best" — NOT approval, ask again.
+- Ban applies to **ALL parallel agents**, including "scouts" during interview phase.
+- If user asks "launch sub-agents / parallelize" but no spec — **refuse** and propose building spec first (even if skill triggered by accident).
+- Spec rejected — back to Step 2, clarify, do NOT start build.
 
-**Шаг 3 — делегирование (только после «да»).** Разбей спеку на независимые куски.
-- **По умолчанию — субагенты** (инструмент Task): встроены, работают на любом плане,
-  Claude сам делегирует кусок и забирает результат в сессию.
-- «Настоящая» многосессионная параллельность — это **Agent Teams**: экспериментально,
-  включается `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` в settings.json, **на Pro может быть недоступна**.
-- Параллель недоступна/нестабильна → собирай **последовательно по той же спеке**, не зависай.
+### Guard 3 — Human zones (irreversible & external)
+**STOP on everything irreversible or touching real resources:** payments, sending money, data deletion, DB migrations, mailouts, deploy/`publish`, `git push --force`, `rm -rf`, production API keys/secrets, webhooks in prod. **If unsure — treat as irreversible and ask.** This applies to sub-agents on Step 3 too: they don't execute such actions — only human, manually.
 
-**Шаг 4 — verify before build/handoff.** Три слоя:
-1. строка-правило в `CLAUDE.md`, например: «Перед сдачей опиши, как проверишь результат, потом запусти проверку — тесты, браузер или линтер»;
-2. автопроверка — тесты / линтер / открыть в браузере, чтобы Claude увидел свой результат;
-3. зоны человека (Гард 3) — оплату/удаление/прод проверяешь ты вручную.
-
-**Шаг 5 (опционально) — build me a skill.** Удачное и повторяемое — предложи упаковать в
-скилл, отдельной секцией **gotchas**.
+### Guard 4 — Budget & limit honesty
+- Sub-agents consume the **SAME shared limit** as regular chat. Skill protects from overruns **on guessing and rework**, but doesn't make the limit unlimited.
+- On Pro, full parallel quickly hits the 5-hour limit window — that's normal, **go sequentially per spec**.
+- Don't spawn agents "just in case". Split per spec only on truly independent chunks.
 
 ---
 
-## 🪤 ГРАБЛИ
+## 📋 ALGORITHM
 
-| Симптом | Что делать |
+**Step 1 — interview me.** Per scope (Guard 1) ask targeted questions surfacing key decisions (what data, where to store, edge cases, what counts as "done"). If user says "your call" — proceed but **state assumptions**.
+
+**Step 2 — write me a spec.** Assemble brief spec: goal, steps, key decisions, done criteria. **Show and wait for explicit "yes"** (Guard 2). Rejected — clarify, don't build.
+
+**Step 3 — delegation (only after "yes").** Break spec into independent chunks.
+- **Default — sub-agents** (Task tool): built-in, work on any plan, Claude delegates chunk and pulls result into session.
+- "Real" multi-session parallelism — **Agent Teams**: experimental, enabled via `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` in settings.json, **may be unavailable on Pro**.
+- Parallel unavailable/unstable → build **sequentially per same spec**, don't stall.
+
+**Step 4 — verify before build/handoff.** Three layers:
+1. rule line in `CLAUDE.md`, e.g.: "Before handoff, describe how you'll verify result, then run verification — tests, browser, or linter";
+2. auto-check — tests / linter / open in browser so Claude sees own result;
+3. human zones (Guard 3) — payments/deletion/prod you verify manually.
+
+**Step 5 (optional) — build me a skill.** Successful & repeatable → propose packaging into skill, with dedicated **gotchas** section.
+
+---
+
+## 🪤 GOTCHAS
+
+| Symptom | What to do |
 |---|---|
-| Скилл не активировался сам | Матчинг вероятностный. Скажи явно: «`spec-pilot: <задача>`» — так гарантированно |
-| Claude рванул в параллель без твоего «ок» | **Стоп-фраза: «стоп, сначала спека».** Он обязан вернуться на Шаг 2 |
-| Интервью превратилось в допрос | Гард 1: на средней задаче ≤ 3 вопроса, на тривиальной — 0 |
-| Саб-агенты глючат / Agent Teams недоступны | Гард 4: иди последовательно по спеке, смысл и порядок сохранятся |
-| «automate this» соблазняет автоматизировать всё | Автоматизируй только **измеримое**; где нужен твой вкус — **augment** (оставайся в петле). Не снимай себя с контура на дорогих/необратимых действиях |
+| Skill didn't auto-activate | Matching is probabilistic. Say explicitly: "`spec-pilot: <task>`" — guarantees it |
+| Claude rushed into parallel without your "ok" | **Stop phrase: "stop, spec first".** Must return to Step 2 |
+| Interview turned into interrogation | Guard 1: on medium task ≤ 3 questions, on trivial — 0 |
+| Sub-agents glitchy / Agent Teams unavailable | Guard 4: go sequentially per spec, meaning and order preserved |
+| "automate this" tempts to automate everything | Automate only the **measurable**; where your TASTE is needed → augment (stay in loop). Don't step out of the loop on expensive/irreversible actions |
 
 ---
 
-## ✅ Что этот скилл гарантирует
+## ✅ What This Skill Guarantees
 
-- Не даст Claude гадать — сначала вытащит из тебя ТЗ интервью + спекой.
-- Удерживает Claude от параллели без утверждённой спеки (правило вшито в инструкцию;
-  рванул без «ок» — лови стоп-фразой). **Бережёт лимит от слива на гадании и переделках** —
-  но не делает лимит безграничным.
-- Не полезет автодействием в оплату, удаление данных, прод и прочее необратимое.
-- Не создаст overhead на тривиальной правке.
-- **Сам скилл работает на любом тарифе, включая Pro** (это скилл, не workflow). Для полной
-  многосессионной параллельности (Agent Teams) может понадобиться план выше — проверь свой.
-
----
-
+- Won't let Claude guess — first pulls spec from you via interview + spec.
+- Holds Claude back from parallel without approved spec (rule baked into instructions; rushed without "ok" — catch with stop phrase). **Saves limit from burn on guessing & rework** — but doesn't make limit unlimited.
+- Won't auto-act on payments, data deletion, prod, or other irreversible actions.
+- Won't create overhead on trivial edits.
+- **Skill itself works on any tier including Pro** (it's a skill, not a workflow). For true multi-session parallelism (Agent Teams) may need higher plan — check yours.

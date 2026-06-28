@@ -83,6 +83,7 @@
                         <button id="runDiagBtn" class="btn-primary" disabled>Запустить диагностику</button>
                     </div>
                 </div>
+                <div id="historyDuringDiagnosis" class="history-during-diagnosis" style="display:none;"></div>
             </section>
 
             <section class="panel panel-history" id="historyPanel">
@@ -111,7 +112,7 @@
                         </thead>
                         <tbody id="historyBody">
                             {% for row in history %}
-                            <tr class="history-row" data-id="{{ row.id }}" data-input="{{ row.input_value }}" data-olt-host="{{ row.olt_host }}">
+                            <tr class="history-row" data-id="{{ row.id }}" data-input="{{ row.input_value }}" data-olt-host="{{ row.olt_host }}" data-ont-address="{{ row.ont_address }}">
                                 <td>{{ row.created_at.strftime('%d.%m.%Y %H:%M') }}</td>
                                 <td>{{ row.olt_name }} ({{ row.olt_host }})</td>
                                 <td>{{ row.ont_address }}</td>
