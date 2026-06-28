@@ -36,6 +36,7 @@ function renderTask(task) {
         <strong>${task.task_id}</strong>: ${task.title}
         <div>Зона: <span class="agent-zone">${task.zone}</span> | Попытки: ${task.revision_count}</div>
         ${errors}
+        <button class="btn" style="margin-top:0.5rem;" onclick="deleteTask('${task.task_id}')">Удалить</button>
     </div>`;
 }
 

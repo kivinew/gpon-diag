@@ -20,7 +20,7 @@ class Thresholds:
     ont_temperature_warn: int = 65
     ont_temperature_crit: int = 75
     memory_usage_warn: int = 90
-    distance_warn: int = 15000
+    distance_warn: int = 19000
     distance_crit: int = 20000
     bad_versions: list = field(default_factory=list)
     no_ping_models: list = field(default_factory=list)

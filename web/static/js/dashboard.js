@@ -578,7 +578,7 @@ function attachHistoryRowHandlers() {
                     els.oltSelect.value = oltHost;
                     state.currentOlt = oltHost;
                 }
-                // Load and display brief report from history
+                // Load and display brief report from DB history
                 try {
                     const resp = await fetch(`/api/history/${diagId}`);
                     const data = await resp.json();
@@ -600,47 +600,14 @@ function attachHistoryRowHandlers() {
     }
 
     function renderBriefReport(report) {
-        // Show a concise summary: online/offline status and count of problems
         const status = report.is_online ? '<span class="status-badge online">ONLINE</span>' : '<span class="status-badge offline">OFFLINE</span>';
         const problems = report.problems && report.problems.length ? report.problems.length : 0;
         const problemsBadge = problems ? `<span class="problems-count">${problems}</span>` : '<span class="problems-count ok">0</span>';
-        const summaryHtml = `
+        els.diagContent.innerHTML = `
             <div class="brief-report">
-                <div>Статус: ${status}</div>
-                <div>Проблем: ${problemsBadge}</div>
-                <div class="brief-text">${escapeHtml(JSON.stringify(report, null, 2))}</div>
+                <div>Статус: ${status} — Проблем: ${problemsBadge}</div>
+                <pre class="report-json">${escapeHtml(JSON.stringify(report, null, 2))}</pre>
             </div>`;
-        els.diagContent.innerHTML = summaryHtml;
-    }
-                // Load and display detailed history record
-                try {
-                        const resp = await fetch(`/api/history/${diagId}`);
-                        const data = await resp.json();
-                        if (data.report) {
-                            // Show as if it were a fresh diagnosis result, using same formatting
-                            const formatted = formatReportForDisplay(data.report);
-                            renderDiagResult(formatted);
-                            state.currentDiagnosis = {
-                                address: data.ont_address,
-                                olt_host: data.olt_host,
-                                report: data.report
-                            };
-                        }
-                } catch (e) {
-                    console.error('Failed to load history detail:', e);
-                }
-                // Optionally refresh history list
-                await loadHistory();
-            });
-        });
-    }
-                    els.currentOlt.textContent = `OLT: ${oltHost}`;
-                }
-
-                // Load historical report
-                loadHistoricalReport(diagId);
-            });
-        });
     }
 
     els.historyFilter.addEventListener('input', renderHistory);

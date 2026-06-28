@@ -107,7 +107,7 @@ thresholds:
   cpu_temp_crit_c: 90              # CPU temperature critical
   cpu_usage_warn_pct: 90           # CPU usage warning
   memory_usage_warn_pct: 85        # Memory usage warning
-  distance_warn_m: 18000           # Distance warning (long line)
+  distance_warn_m: 19000           # Distance warning (long line)
   distance_crit_m: 20000           # Distance critical
 
 # Known bad firmware versions (space-separated)
