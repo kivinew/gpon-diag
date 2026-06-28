@@ -230,8 +230,8 @@ DEFAULT_RULES = [
     Rule("no_lan", rule_no_lan, "ethernet"),
     Rule("overheating", rule_overheating, "hardware"),
     Rule("high_temperature", rule_high_temperature, "hardware"),
-    Rule("low_voltage", rule_low_voltage, "hardware"),
-    Rule("low_voltage", rule_low_voltage, "hardware"),
+    # Rule("low_voltage", rule_low_voltage, "hardware"),  # duplicate removed
+
     Rule("ont_temperature", rule_ont_temperature, "hardware"),
     Rule("long_distance", rule_long_distance, "optic"),
     Rule("match_state", rule_match_state, "config"),
