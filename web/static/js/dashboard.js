@@ -539,8 +539,8 @@
 
             try {
                 // API returns 'report' (already parsed), but server-rendered data may have 'report_json'
-                const report = row.report || (row.report_json ? JSON.parse(row.report_json) : {});
-                if (report.is_online !== false) {
+                const report = row.report || {};
+                if (report.is_online === false) {
                     statusBadge = '<span class="status-badge online">ONLINE</span>';
                 } else {
                     statusBadge = '<span class="status-badge offline">OFFLINE</span>';
@@ -565,7 +565,7 @@
         attachHistoryRowHandlers();
     }
 
-    function attachHistoryRowHandlers() {
+function attachHistoryRowHandlers() {
         els.historyBody.querySelectorAll('.history-row').forEach(row => {
             row.addEventListener('click', async () => {
                 const diagId = row.dataset.id;
@@ -578,6 +578,40 @@
                     els.oltSelect.value = oltHost;
                     state.currentOlt = oltHost;
                 }
+                // Load and display brief report from history
+                try {
+                    const resp = await fetch(`/api/history/${diagId}`);
+                    const data = await resp.json();
+                    if (data.report) {
+                        renderBriefReport(data.report);
+                        state.currentDiagnosis = {
+                            address: data.ont_address,
+                            olt_host: data.olt_host,
+                            report: data.report
+                        };
+                    }
+                } catch (e) {
+                    console.error('Failed to load history detail:', e);
+                }
+                // Refresh history list after selection
+                await loadHistory();
+            });
+        });
+    }
+
+    function renderBriefReport(report) {
+        // Show a concise summary: online/offline status and count of problems
+        const status = report.is_online ? '<span class="status-badge online">ONLINE</span>' : '<span class="status-badge offline">OFFLINE</span>';
+        const problems = report.problems && report.problems.length ? report.problems.length : 0;
+        const problemsBadge = problems ? `<span class="problems-count">${problems}</span>` : '<span class="problems-count ok">0</span>';
+        const summaryHtml = `
+            <div class="brief-report">
+                <div>Статус: ${status}</div>
+                <div>Проблем: ${problemsBadge}</div>
+                <div class="brief-text">${escapeHtml(JSON.stringify(report, null, 2))}</div>
+            </div>`;
+        els.diagContent.innerHTML = summaryHtml;
+    }
                 // Load and display detailed history record
                 try {
                         const resp = await fetch(`/api/history/${diagId}`);

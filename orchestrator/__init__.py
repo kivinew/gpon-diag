@@ -54,6 +54,22 @@ from .outer_loop import (
 )
 
 # ---------------------------------------------------------------------------
+
+# Helper to ensure a single global registry is created and agents registered
+def _ensure_global_registry() -> AgentRegistry:
+    global _global_registry
+    if _global_registry is None:
+        _global_registry = AgentRegistry()
+        # Register default agents once
+        register_builtin_agents(_global_registry)
+    return _global_registry
+
+# Public wrapper for listing agents
+def list_agents() -> dict:
+    """Return a dictionary of all registered agents (id → AgentInfo)."""
+    return _ensure_global_registry().list_all()
+
+# ---------------------------------------------------------------------------
 # Built‑in AI agent registration helper
 # ---------------------------------------------------------------------------
 def register_builtin_agents(registry: AgentRegistry) -> None:
@@ -127,6 +143,8 @@ __all__ = [
     "create_outer_loop_controller",
     "run_task_with_outer_loop",
     "delete_task_from_queue",
+    "delete_task_from_queue",
     "register_builtin_agents",
+    "list_agents",
 ]
 
