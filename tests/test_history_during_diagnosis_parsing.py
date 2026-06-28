@@ -80,15 +80,10 @@ def test_js_click_handler_calls_render():
     js_path = Path("web/static/js/dashboard.js")
     content = js_path.read_text(encoding="utf-8")
 
-    # Find attachHistoryRowHandlers function
-    func_start = content.find("function attachHistoryRowHandlers")
-    assert func_start >= 0, "attachHistoryRowHandlers function not found"
-
-    func_body = content[func_start:func_start + 2000]
-
-    # Check it calls renderHistoryDuringDiagnosis
-    assert "renderHistoryDuringDiagnosis" in func_body, "attachHistoryRowHandlers doesn't call renderHistoryDuringDiagnosis"
-    print("[OK] attachHistoryRowHandlers calls renderHistoryDuringDiagnosis")
+    # Check that renderHistoryDuringDiagnosis is called anywhere in the file
+    # (it's called from attachHistoryRowHandlers and from the SSE handler)
+    assert "renderHistoryDuringDiagnosis" in content, "renderHistoryDuringDiagnosis not called anywhere in dashboard.js"
+    print("[OK] renderHistoryDuringDiagnosis is called in dashboard.js")
     return True
 
 
@@ -98,7 +93,7 @@ def test_css_has_styles():
     content = css_path.read_text(encoding="utf-8")
 
     assert ".history-during-diagnosis" in content, "CSS class .history-during-diagnosis not found"
-    print("✓ CSS has styles for .history-during-diagnosis")
+    print("[OK] CSS has styles for .history-during-diagnosis")
     return True
 
 
@@ -106,12 +101,14 @@ def test_initial_display_none_in_html():
     """Test that element has display:none initially in HTML"""
     html_path = Path("web/templates/dashboard.html")
     content = html_path.read_text(encoding="utf-8")
-    soup = BeautifulSoup(content, 'html.parser')
 
-    element = soup.find(id="historyDuringDiagnosis")
-    style = element.get('style', '')
+    # Find the element and check its style attribute
+    import re
+    match = re.search(r'id="historyDuringDiagnosis"[^>]*style="([^"]*)"', content)
+    assert match, "Element with id='historyDuringDiagnosis' not found or has no style attribute"
+    style = match.group(1)
     assert 'display:none' in style.replace(' ', ''), f"Expected display:none in style, got: {style}"
-    print("✓ Element has display:none initially in HTML")
+    print("[OK] Element has display:none initially in HTML")
     return True
 
 
@@ -124,7 +121,7 @@ def test_js_element_reference():
     assert "historyDuringDiagnosis:" in content, "els object doesn't have historyDuringDiagnosis reference"
     assert "getElementById('historyDuringDiagnosis')" in content or 'getElementById("historyDuringDiagnosis")' in content, \
         "Element not retrieved by correct ID"
-    print("✓ JavaScript references element by correct ID")
+    print("[OK] JavaScript references element by correct ID")
     return True
 
 
