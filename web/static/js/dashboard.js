@@ -557,17 +557,46 @@ function attachHistoryRowHandlers() {
                     var detailResp = await fetch('/api/history/' + diagId);
                     var detailData = await detailResp.json();
 
-                    if (detailData.report) {
+                    // Check if diagnosis was performed today
+                    var isToday = false;
+                    if (detailData.created_at) {
+                        var parts = detailData.created_at.split(' ');
+                        if (parts.length >= 1) {
+                            var dateStr = parts[0]; // DD.MM.YYYY
+                            var dateParts = dateStr.split('.');
+                            if (dateParts.length === 3) {
+                                var diagDate = new Date(dateParts[2], dateParts[1] - 1, dateParts[0]);
+                                var today = new Date();
+                                today.setHours(0, 0, 0, 0);
+                                isToday = diagDate.getTime() === today.getTime();
+                            }
+                        }
+                    }
+
+                    if (isToday && detailData.report) {
+                        // Show full report in diagnosis panel for today's diagnostics
                         var reportText = formatReportForDisplay(detailData.report);
-                        els.detailTitle.textContent = detailData.olt_name + ' — История';
-                        showDetail();
-                        showTab('summary');
-                        els.detailContent.innerHTML = '<div class="diag-report-header"><h3>' + escapeHtml(detailData.created_at) + ' · ' + escapeHtml(detailData.olt_name) + '</h3></div><div class="diag-report" id="report">' + escapeHtml(reportText) + '</div>';
+                        renderDiagResult(reportText);
                         state.currentDiagnosis = {
                             address: detailData.ont_address,
                             olt_host: detailData.olt_host,
                             report: detailData.report
                         };
+                    } else {
+                        // Show prompt to run new diagnosis
+                        els.detailTitle.textContent = detailData.olt_name + ' — История';
+                        showDetail();
+                        showTab('summary');
+                        var promptHtml = '<div class="diag-report-header"><h3>' + escapeHtml(detailData.created_at) + ' · ' + escapeHtml(detailData.olt_name) + '</h3></div>';
+                        if (!isToday) {
+                            promptHtml += '<div class="diag-empty" style="text-align:center; padding:40px 20px;">' +
+                                '<svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin:0 auto 16px; opacity:0.5;"><circle cx="12" cy="12" r="10"></circle><path d="M12 6v6l4 2"></path></svg>' +
+                                '<p style="font-size:16px; color:#e2e8f0; margin-bottom:8px;">Диагностика выполнена в другой день</p>' +
+                                '<p style="font-size:14px; color:#94a3b8; margin-bottom:24px;">Последняя диагностика: ' + escapeHtml(detailData.created_at) + '</p>' +
+                                '<button class="btn-primary" onclick="runDiagnosisFromHistory(\'' + escapeHtml(inputValue) + '\', \'' + escapeHtml(oltHost || '') + '\')">Выполнить диагностику сейчас</button>' +
+                                '</div>';
+                        }
+                        els.detailContent.innerHTML = promptHtml;
                     }
 
                     // Show "История диагностики" - always show at least current item
@@ -581,7 +610,7 @@ function attachHistoryRowHandlers() {
 
                     var searchTerms = [ontAddress, detailData.ont_address].filter(Boolean);
                     var historyItems = [currentItem];
-                    
+
                     for (const term of searchTerms) {
                         try {
                             var historyResp = await fetch('/api/history?q=' + encodeURIComponent(term) + '&limit=10');
@@ -636,6 +665,7 @@ function attachHistoryRowHandlers() {
     // ============================================================
     // Detail Panel Tabs
     // ============================================================
+    function showTab(tabName) {
         els.detailTabs.forEach(function(btn) {
             btn.classList.toggle('active', btn.dataset.tab === tabName);
         });
@@ -655,6 +685,18 @@ function attachHistoryRowHandlers() {
     });
 
     els.closeDetail.addEventListener('click', hideDetail);
+
+    // Run diagnosis from history (for older diagnostics)
+    window.runDiagnosisFromHistory = function(inputValue, oltHost) {
+        if (!inputValue) return;
+        els.searchInput.value = inputValue;
+        if (oltHost) {
+            els.oltSelect.value = oltHost;
+            state.currentOlt = oltHost;
+        }
+        // Trigger the search form submit which will run the diagnosis
+        els.searchForm.dispatchEvent(new Event('submit'));
+    };
 
     // ============================================================
     // Report Formatting (from index.html)
