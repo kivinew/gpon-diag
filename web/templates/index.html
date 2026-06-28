@@ -425,8 +425,8 @@ function loadHistoricalReport(diagId) {
     resultBlock.style.display = 'block';
     resultBlock.innerHTML =
         '<div class="result-card">' +
-        '<div class="result-header"><h1>Загрузка…</h1></div>' +
-        '<div class="report-block">Загрузка отчёта…</div></div>';
+        '<div class="result-header"><h1>Загрузка&hellip;</h1></div>' +
+        '<div class="report-block">Загрузка отчёта&hellip;</div></div>';
 
     fetch('/api/history/' + diagId)
         .then(function(resp) { return resp.json(); })

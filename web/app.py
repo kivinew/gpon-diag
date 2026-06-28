@@ -18,9 +18,11 @@ from sqlalchemy import text
 
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from diagnose import load_config, find_available_olt, parse_input, run_diagnosis
-from core.olt import OntNotFoundError
+from diagnose import load_config, find_available_olt, parse_input, run_diagnosis, _load_olt_credentials, sanitize_ont_param
+from core.olt import OntNotFoundError, get_olt_connection, close_all
 from core.thresholds import Thresholds
+from core.parser import parse_ont_info, parse_optical_info, parse_line_quality
+from core.models import OntMetrics
 
 app = Flask(__name__)
 app.debug = False
@@ -218,10 +220,186 @@ def index():
     history = Diagnosis.query.order_by(Diagnosis.created_at.desc()).limit(20).all()
     return render_template("index.html", olts=olts, history=history)
 
-# Simple health‑check endpoint for diagnostics
+@app.route("/dashboard", methods=["GET"])
+def dashboard():
+    config = load_config()
+    olts = config.get("olts", [])
+    history = Diagnosis.query.order_by(Diagnosis.created_at.desc()).limit(20).all()
+    return render_template("dashboard.html", olts=olts, history=history)
+
+# Simple health-check endpoint for diagnostics
 @app.route("/ping", methods=["GET"])
 def ping():
     return {"status": "ok"}
+
+@app.route("/api/search", methods=["POST"])
+def api_search():
+    """Search for ONTs by serial, address, or description across OLT(s)."""
+    data = request.get_json(silent=True) or {}
+    query = data.get("query", "").strip()
+    olt_host = data.get("olt_host", "").strip()
+
+    if not query:
+        return {"error": "Введите запрос для поиска."}, 400
+
+    config = load_config()
+    olts_to_search = []
+
+    if olt_host:
+        olt_config = find_olt_by_host(config, olt_host)
+        if not olt_config:
+            return {"error": f"OLT {olt_host} не найден."}, 400
+        olts_to_search = [olt_config]
+    else:
+        olts_to_search = config.get("olts", [])
+
+    # Search across all OLTs
+    all_results = []
+    for olt_config in olts_to_search:
+        host = olt_config["host"]
+        port = olt_config.get("port", 23)
+        username, password = _load_olt_credentials(olt_config)
+        if not username or not password:
+            continue
+
+        try:
+            olt = get_olt_connection(host, port, username, password, 15)
+            olt.connect()
+
+            # Parse query type
+            input_data = parse_input(query)
+
+            if input_data["type"] == "serial":
+                loc = olt.find_ont_by_sn(input_data["value"])
+                if loc:
+                    input_data.update(loc)
+            elif input_data["type"] == "address":
+                # Already have frame/slot/port/ont_id
+                pass
+            elif input_data["type"] == "description":
+                loc = olt.find_ont_by_description(input_data["value"])
+                if loc:
+                    input_data.update(loc)
+
+            # If we have address, collect basic info
+            if "frame" in input_data and "slot" in input_data and "port" in input_data and "ont_id" in input_data:
+                # Quick collect basic info
+                raw_data = olt.collect_ont(
+                    sanitize_ont_param(input_data["frame"]),
+                    sanitize_ont_param(input_data["slot"]),
+                    sanitize_ont_param(input_data["port"]),
+                    sanitize_ont_param(input_data["ont_id"]),
+                    log=lambda *a, **k: None
+                )
+
+                metrics = OntMetrics()
+                metrics.address = f"{input_data['frame']}/{input_data['slot']}/{input_data['port']}/{input_data['ont_id']}"
+                metrics.frame = input_data["frame"]
+                metrics.slot = input_data["slot"]
+                metrics.port = input_data["port"]
+                metrics.ont_id = input_data["ont_id"]
+
+                if "ont_info" in raw_data:
+                    parse_ont_info(raw_data["ont_info"], metrics)
+                if "optical_info" in raw_data:
+                    parse_optical_info(raw_data["optical_info"], metrics)
+
+                all_results.append({
+                    "ont_address": metrics.address,
+                    "olt_host": host,
+                    "olt_name": olt_config.get("name", host),
+                    "serial": metrics.serial,
+                    "description": metrics.description,
+                    "is_online": metrics.is_online,
+                    "model": metrics.model,
+                    "ont_rx_power": metrics.ont_rx_power,
+                    "olt_rx_power": metrics.olt_rx_power,
+                    "distance_m": metrics.distance_m
+                })
+
+            close_all()
+
+        except Exception as e:
+            logger.warning(f"Search failed on {host}: {e}")
+            continue
+
+    return {"results": all_results}
+
+@app.route("/api/optics", methods=["GET"])
+def api_optics():
+    """Get real-time optics data for a specific ONT."""
+    address = request.args.get("address", "").strip()
+    olt_host = request.args.get("olt_host", "").strip()
+
+    if not address or not olt_host:
+        return {"error": "Укажите адрес ONT и OLT."}, 400
+
+    config = load_config()
+    olt_config = find_olt_by_host(config, olt_host)
+    if not olt_config:
+        return {"error": f"OLT {olt_host} не найден."}, 400
+
+    host = olt_config["host"]
+    port = olt_config.get("port", 23)
+    username, password = _load_olt_credentials(olt_config)
+    if not username or not password:
+        return {"error": "Нет учетных данных для OLT."}, 400
+
+    # Parse address F/S/P/ONT
+    parts = address.split("/")
+    if len(parts) != 4 or not all(p.isdigit() for p in parts):
+        return {"error": "Неверный формат адреса. Ожидается F/S/P/ONT."}, 400
+
+    frame, slot, port_, ont_id = parts
+
+    try:
+        olt = get_olt_connection(host, port, username, password, 15)
+        olt.connect()
+
+        raw_data = olt.collect_ont(
+            sanitize_ont_param(frame),
+            sanitize_ont_param(slot),
+            sanitize_ont_param(port_),
+            sanitize_ont_param(ont_id),
+            log=lambda *a, **k: None
+        )
+
+        metrics = OntMetrics()
+        metrics.address = address
+        metrics.frame = frame
+        metrics.slot = slot
+        metrics.port = port_
+        metrics.ont_id = ont_id
+
+        if "optical_info" in raw_data:
+            parse_optical_info(raw_data["optical_info"], metrics)
+        if "ont_info" in raw_data:
+            parse_ont_info(raw_data["ont_info"], metrics)
+        if "line_quality" in raw_data:
+            parse_line_quality(raw_data["line_quality"], metrics)
+
+        close_all()
+
+        return {
+            "ont_rx_power": metrics.ont_rx_power,
+            "olt_rx_power": metrics.olt_rx_power,
+            "ont_tx_power": metrics.ont_tx_power,
+            "laser_bias_current": metrics.laser_bias_current,
+            "ont_temperature": metrics.ont_temperature,
+            "supply_voltage": metrics.supply_voltage,
+            "distance_m": metrics.distance_m,
+            "upstream_errors": metrics.upstream_errors,
+            "downstream_errors": metrics.downstream_errors,
+            "total_bip_errors": metrics.total_bip_errors,
+            "is_online": metrics.is_online,
+            "model": metrics.model,
+            "serial": metrics.serial,
+            "description": metrics.description
+        }
+
+    except Exception as e:
+        logger.exception(f"Optics fetch error: {e}")
+        return {"error": str(e)}, 500
 
 @app.route("/api/history/<int:diag_id>", methods=["GET"])
 def api_history_detail(diag_id):
@@ -249,19 +427,21 @@ def api_history_detail(diag_id):
 
 @app.route("/api/history", methods=["GET"])
 def api_history():
-    """Search historical diagnosis results by ONT address, serial, or description."""
+    """Search historical diagnosis results by ONT address, serial, or description.
+    If no query provided, returns all history (limited)."""
     query = request.args.get("q", "").strip()
-    limit = request.args.get("limit", 10, type=int)
+    limit = request.args.get("limit", 20, type=int)
 
-    if not query:
-        return {"error": "Введите запрос для поиска."}, 400
-
-    history_records = Diagnosis.query.filter(
-        db.or_(
-            Diagnosis.ont_address.contains(query),
-            Diagnosis.input_value.contains(query),
+    q = Diagnosis.query
+    if query:
+        q = q.filter(
+            db.or_(
+                Diagnosis.ont_address.contains(query),
+                Diagnosis.input_value.contains(query),
+            )
         )
-    ).order_by(Diagnosis.created_at.desc()).limit(limit).all()
+
+    history_records = q.order_by(Diagnosis.created_at.desc()).limit(limit).all()
 
     results = []
     for record in history_records:
@@ -367,5 +547,5 @@ def orchestrator_set_status():
     return {"task_id": task_id, "status": card.status.value}
 
 if __name__ == "__main__":
-    # Production server is started via scripts/run_server.py
+    # Production server is started via scripts/check_and_start_server.py
     pass

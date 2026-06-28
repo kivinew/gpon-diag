@@ -1,0 +1,172 @@
+{% extends 'base.html' %}
+
+{% block title_extra %} — Dashboard{% endblock %}
+
+{% block styles %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="dashboard-shell">
+    <header class="dash-header">
+        <div class="dash-header-inner">
+            <div class="logo">
+                <div class="logo-icon">G</div>
+                <div class="logo-text">GPON<span>Diag</span></div>
+            </div>
+            <div class="dash-title">
+                <h1>Панель мониторинга GPON</h1>
+                <span class="header-badge" id="currentOlt">—</span>
+            </div>
+            <div class="dash-actions">
+                <select id="oltSelect" class="form-select">
+                    <option value="">Авто-определение</option>
+                    {% for olt in olts %}
+                    <option value="{{ olt.host }}">{{ olt.name }} ({{ olt.host }})</option>
+                    {% endfor %}
+                </select>
+                <button id="refreshBtn" class="btn-icon" title="Обновить"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"></path><path d="M1 20v-6h6"></path><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg></button>
+            </div>
+        </div>
+    </header>
+
+    <main class="dash-main">
+        <div class="dash-grid">
+            <section class="panel panel-search" id="searchPanel">
+                <div class="panel-header">
+                    <h2>Поиск ONT</h2>
+                    <span class="panel-badge" id="searchCount">0</span>
+                </div>
+                <form id="searchForm" class="search-form">
+                    <div class="form-group">
+                        <label for="searchInput">Серийный номер, адрес или лицевой счёт</label>
+                        <input type="text" id="searchInput" name="query" placeholder="0/1/1/5 или 48575443C709270E или fl_12345" autocomplete="off" required>
+                    </div>
+                    <button type="submit" class="btn-primary" id="searchBtn">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                        Найти
+                    </button>
+                </form>
+                <div id="searchResults" class="search-results"></div>
+            </section>
+
+            <section class="panel panel-optics" id="opticsPanel">
+                <div class="panel-header">
+                    <h2>Оптика (Real-time)</h2>
+                    <div class="panel-controls">
+                        <label class="toggle">
+                            <input type="checkbox" id="autoRefreshOptics" checked>
+                            <span class="toggle-slider"></span>
+                            <span>Авто</span>
+                        </label>
+                        <select id="opticsInterval" class="form-select-sm">
+                            <option value="5000">5 сек</option>
+                            <option value="10000" selected>10 сек</option>
+                            <option value="30000">30 сек</option>
+                            <option value="60000">1 мин</option>
+                        </select>
+                    </div>
+                </div>
+                <div id="opticsContent" class="optics-content">
+                    <div class="optics-empty">Выберите ONT для мониторинга</div>
+                </div>
+            </section>
+
+            <section class="panel panel-diag" id="diagPanel">
+                <div class="panel-header">
+                    <h2>Диагностика</h2>
+                </div>
+                <div id="diagContent" class="diag-content">
+                    <div class="diag-empty">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"></circle><path d="M12 16v-4"></path><path d="M12 8h.01"></path></svg>
+                        <p>Запустите диагностику для ONT</p>
+                        <button id="runDiagBtn" class="btn-primary" disabled>Запустить диагностику</button>
+                    </div>
+                </div>
+            </section>
+
+            <section class="panel panel-history" id="historyPanel">
+                <div class="panel-header">
+                    <h2>История инцидентов</h2>
+                    <div class="panel-controls">
+                        <input type="text" id="historyFilter" class="form-input-sm" placeholder="Фильтр...">
+                        <select id="historyLimit" class="form-select-sm">
+                            <option value="20">20</option>
+                            <option value="50" selected>50</option>
+                            <option value="100">100</option>
+                        </select>
+                    </div>
+                </div>
+                <div id="historyContent" class="history-content">
+                    <table class="history-table">
+                        <thead>
+                            <tr>
+                                <th>Дата</th>
+                                <th>OLT</th>
+                                <th>ONT</th>
+                                <th>Запрос</th>
+                                <th>Статус</th>
+                                <th>Проблемы</th>
+                            </tr>
+                        </thead>
+                        <tbody id="historyBody">
+                            {% for row in history %}
+                            <tr class="history-row" data-id="{{ row.id }}" data-input="{{ row.input_value }}" data-olt-host="{{ row.olt_host }}">
+                                <td>{{ row.created_at.strftime('%d.%m.%Y %H:%M') }}</td>
+                                <td>{{ row.olt_name }} ({{ row.olt_host }})</td>
+                                <td>{{ row.ont_address }}</td>
+                                <td>{{ row.input_value }}</td>
+                                <td>
+                                    {% if row.report_json %}
+                                    {% set report = row.report_json | fromjson %}
+                                    {% if report.is_online %}
+                                    <span class="status-badge online">ONLINE</span>
+                                    {% else %}
+                                    <span class="status-badge offline">OFFLINE</span>
+                                    {% endif %}
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if row.report_json %}
+                                    {% set report = row.report_json | fromjson %}
+                                    {% if report.problems and report.problems|length > 0 %}
+                                    <span class="problems-count">{{ report.problems|length }}</span>
+                                    {% else %}
+                                    <span class="problems-count ok">0</span>
+                                    {% endif %}
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </div>
+
+        <div class="dash-detail" id="detailPanel" style="display:none;">
+            <div class="detail-header">
+                <h2 id="detailTitle">Детали ONT</h2>
+                <button id="closeDetail" class="btn-icon" title="Закрыть"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg></button>
+            </div>
+            <div class="detail-tabs">
+                <button class="tab-btn active" data-tab="summary">Сводка</button>
+                <button class="tab-btn" data-tab="optics">Оптика</button>
+                <button class="tab-btn" data-tab="lan">LAN</button>
+                <button class="tab-btn" data-tab="register">Реестр</button>
+                <button class="tab-btn" data-tab="raw">Raw</button>
+            </div>
+            <div class="detail-content" id="detailContent"></div>
+        </div>
+    </main>
+</div>
+
+<div id="overlay" class="overlay" style="display:none;">
+    <div class="spinner-ring"></div>
+    <div class="loading-text" id="loadingStatus">Выполняется диагностика…</div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+{% endblock %}

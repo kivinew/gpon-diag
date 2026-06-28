@@ -91,6 +91,27 @@ body {
     border: 1px solid rgba(56,189,248,0.12);
 }
 
+.header-nav {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+}
+
+.nav-link {
+    color: #94a3b8;
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: 500;
+    padding: 8px 12px;
+    border-radius: 6px;
+    transition: all 0.2s;
+}
+
+.nav-link:hover {
+    color: #38bdf8;
+    background: rgba(56,189,248,0.1);
+}
+
 /* --- Main --- */
 .main {
     flex: 1;
