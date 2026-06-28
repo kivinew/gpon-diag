@@ -17,6 +17,8 @@ class Thresholds:
     cpu_temp_warn: int = 80
     cpu_temp_crit: int = 90
     cpu_usage_warn: int = 90
+    ont_temperature_warn: int = 65
+    ont_temperature_crit: int = 75
     memory_usage_warn: int = 90
     distance_warn: int = 15000
     distance_crit: int = 20000

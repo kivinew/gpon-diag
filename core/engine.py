@@ -127,7 +127,10 @@ def rule_overheating(metrics, t):
 
 
 def rule_long_distance(metrics, t):
-    if not metrics.is_online or metrics.distance_m < 0:
+    # Guard: выполнять только для online‑ONT
+    if not metrics.is_online:
+        return None
+    if metrics.distance_m < 0:
         return None
     if metrics.distance_m >= t.distance_crit:
         return DiagnosisProblem("warning", "optic", f"Критическое расстояние: {metrics.distance_m} м (предел 20000 м)", "Проверить оптический бюджет")
@@ -194,6 +197,28 @@ def rule_low_voltage(metrics, t):
             "Превышение напряжения — проверить БП")
     return None
 
+# --------------------------------------------------------
+# New rule: temperature check (ONT optical temperature)
+def rule_ont_temperature(metrics, t):
+    """Check ONT temperature from optical‑info.
+    Uses thresholds ont_temperature_warn / ont_temperature_crit.
+    """
+    if not metrics.is_online or metrics.ont_temperature <= -900:
+        return None
+    if metrics.ont_temperature >= t.ont_temperature_crit:
+        return DiagnosisProblem(
+            "critical", "hardware",
+            f"Критическая температура ONT: {metrics.ont_temperature}°C",
+            "Перегрев терминала — проверить вентиляцию и условия размещения"
+        )
+    if metrics.ont_temperature >= t.ont_temperature_warn:
+        return DiagnosisProblem(
+            "warning", "hardware",
+            f"Повышенная температура ONT: {metrics.ont_temperature}°C",
+            "Рекомендуется проверить условия размещения терминала"
+        )
+    return None
+
 
 DEFAULT_RULES = [
     Rule("offline", rule_offline, "optic"),
@@ -206,6 +231,8 @@ DEFAULT_RULES = [
     Rule("overheating", rule_overheating, "hardware"),
     Rule("high_temperature", rule_high_temperature, "hardware"),
     Rule("low_voltage", rule_low_voltage, "hardware"),
+    Rule("low_voltage", rule_low_voltage, "hardware"),
+    Rule("ont_temperature", rule_ont_temperature, "hardware"),
     Rule("long_distance", rule_long_distance, "optic"),
     Rule("match_state", rule_match_state, "config"),
     Rule("config_state", rule_config_state, "config"),

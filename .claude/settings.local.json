@@ -14,7 +14,8 @@
       "Bash(code *)",
       "PowerShell(code *)",
       "PowerShell(& \"C:\\\\Users\\\\Administrator\\\\AppData\\\\Local\\\\Programs\\\\Microsoft VS Code\\\\bin\\\\code\" --install-extension @kodadev/koda-cli)",
-      "Bash(python -m orchestrator.outer_loop)"
+      "Bash(python -m orchestrator.outer_loop)",
+      "WebSearch"
     ]
   }
 }
