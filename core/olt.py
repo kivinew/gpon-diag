@@ -369,14 +369,9 @@ class OltConnection:
         return self._parse_fsp(output)
 
     def find_ont_by_description(self, description):
-        # Добавляем префикс fl_ если description - это цифры 5-16 символов
         value = description
         if description.isdigit() and 5 <= len(description) <= 16:
             value = f"fl_{description}"
-        # Ensure connection is stable before first command (OTLT may need stabilization time)
-        if not self._connected:
-            logger.warning(f"Connection not established, attempting reconnect to {self.host}")
-            self.connect()
         output = self.send_command(f"display ont info by-desc {value}", max_more=-1)
         result = self._parse_fsp(output)
         if not result:
@@ -402,7 +397,7 @@ class OltConnection:
                 fsp_val = oid_val = None
                 continue
             # Table format: "0/ 0/6 0 fl_102693" — single-line F/S/P + ONT-ID
-            m = re.search(r'(\d+)\/\s*(\d+)\/\s*(\d+)\s+(\d+)', line)
+            m = re.search(r'(\d+)\s*/\s*(\d+)\s*/\s*(\d+)\s+(\d+)', line)
             if m:
                 return {"frame": m.group(1), "slot": m.group(2), "port": m.group(3), "ont_id": m.group(4)}
             # Collect key-value pairs across lines
