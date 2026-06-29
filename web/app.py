@@ -5,6 +5,7 @@ import json
 import sys
 import queue
 import threading
+import time
 import logging
 from datetime import datetime, timezone, timedelta
 
@@ -270,6 +271,8 @@ def api_search():
         try:
             olt = get_olt_connection(host, port, username, password, 15)
             olt.connect()
+            # Wait for connection to stabilize after login
+            time.sleep(1)
 
             # Parse query type
             input_data = parse_input(query)

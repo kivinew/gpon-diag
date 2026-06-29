@@ -85,6 +85,8 @@ class OltConnection:
             self._write("config\r")
             self._read_to_prompt(2)
             self._drain_socket()
+            # Stabilize connection - OLT may need time after config mode
+            time.sleep(0.5)
             self._connected = True
         except Exception as e:
             logger.error(f"Failed to connect to {self.host}:{self.port}: {e}")
@@ -187,6 +189,15 @@ class OltConnection:
             output = self._read_to_prompt(5)
         except (ConnectionResetError, BrokenPipeError, OSError) as e:
             logger.warning(f"Command '{command}' failed ({e}), reconnecting...")
+            self._connected = False
+            self._sock = None
+            self.connect()
+            self._write(command + "\r")
+            output = self._read_to_prompt(5)
+
+        # Handle empty output - connection may be stale
+        if not output.strip():
+            logger.warning(f"Empty output for '{command}', reconnecting...")
             self._connected = False
             self._sock = None
             self.connect()
@@ -362,8 +373,17 @@ class OltConnection:
         value = description
         if description.isdigit() and 5 <= len(description) <= 16:
             value = f"fl_{description}"
+        # Ensure connection is stable before first command (OTLT may need stabilization time)
+        if not self._connected:
+            logger.warning(f"Connection not established, attempting reconnect to {self.host}")
+            self.connect()
         output = self.send_command(f"display ont info by-desc {value}", max_more=-1)
-        return self._parse_fsp(output)
+        result = self._parse_fsp(output)
+        if not result:
+            time.sleep(1)
+            output = self.send_command(f"display ont info by-desc {value}", max_more=-1)
+            result = self._parse_fsp(output)
+        return result
 
     @staticmethod
     def _parse_fsp(output):

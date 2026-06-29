@@ -17,6 +17,7 @@ from orchestrator import AgentRegistry, register_builtin_agents
 import os
 import re
 import sys
+import time
 import yaml
 from datetime import datetime, timezone, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -174,6 +175,10 @@ def run_diagnosis(input_data, olt_config, thresholds, allow_actions=True, log=No
     olt = get_olt_connection(host, port, username, password, 30)
     _log(f"Подключение к головной станции {host}...")
     olt.connect()
+    # Wait for connection to stabilize after login - OLT may need time to accept commands
+    time.sleep(1)
+    if not olt._connected:
+        raise ConnectionError(f"Failed to establish connection to {host}")
     _log("OK")
 
     _log("Получение информации о головной станции...")
@@ -331,6 +336,8 @@ def search_ont_on_olt(olt_config, input_data):
         # Create a fresh connection for this thread
         olt = OltConnection(host, 23, username, password, 30)
         olt.connect()
+        # Wait for connection to stabilize
+        time.sleep(1)
         # Try search based on input type
         if input_data["type"] == "serial":
             loc = olt.find_ont_by_sn(input_data["value"])

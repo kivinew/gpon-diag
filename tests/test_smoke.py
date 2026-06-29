@@ -175,12 +175,70 @@ Description             : fl_102693
     assert result == {"frame": "0", "slot": "1", "port": "3", "ont_id": "9"}
 
 
+def test_parse_input_types():
+    """Test parse_input for serial, address and description recognition."""
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from diagnose import parse_input
+
+    # Serial format
+    result = parse_input("4857544312E0E379")
+    assert result["type"] == "serial"
+    assert result["value"] == "4857544312E0E379"
+
+    # Address format
+    result = parse_input("0/1/3/9")
+    assert result["type"] == "address"
+    assert result["frame"] == "0"
+    assert result["slot"] == "1"
+    assert result["port"] == "3"
+    assert result["ont_id"] == "9"
+
+    # Description: numeric (5-16 digits) gets fl_ prefix
+    result = parse_input("102693")
+    assert result["type"] == "description"
+    assert result["value"] == "fl_102693"
+
+    # Description: already has prefix
+    result = parse_input("fl_102693")
+    assert result["type"] == "description"
+    assert result["value"] == "fl_102693"
+
+    # Description: custom string
+    result = parse_input("TEST_USER")
+    assert result["type"] == "description"
+    assert result["value"] == "TEST_USER"
+
+    print("PASSED: parse_input types\n")
+
+
+def test_web_routes():
+    """Test web application routes without OLT connection."""
+    import sys
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from web.app import app, Diagnosis, db
+
+    with app.app_context():
+        # Test ping endpoint
+        with app.test_client() as client:
+            resp = client.get("/ping")
+            assert resp.status_code == 200
+            data = resp.get_json()
+            assert data["status"] == "ok"
+
+        # Test dashboard renders
+        with app.test_client() as client:
+            resp = client.get("/")
+            assert resp.status_code == 200
+
+        print("PASSED: web routes\n")
+
+
 if __name__ == "__main__":
     test_offline_dying_gasp()
     test_online_healthy()
     test_low_rx()
     test_parse_fsp_fl_prefix()
+    test_parse_input_types()
+    test_web_routes()
     print("=" * 40)
     print("ALL TESTS PASSED")
-    
-    print("PASSED\n")
