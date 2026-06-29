@@ -186,6 +186,11 @@ def api_diagnose():
                 olt_ip = olt_config.get("host", "")
                 msg = f"На головной станции {olt_label} ({olt_ip}) терминал {query} не обнаружен."
                 log_q.put({"type": "error", "message": msg})
+            except (TimeoutError, OSError) as exc:
+                olt_label = olt_config.get("name", olt_config.get("host", ""))
+                olt_ip = olt_config.get("host", "")
+                msg = f"Не удалось подключиться к головной станции {olt_label} ({olt_ip}). Проверьте доступность: {exc}"
+                log_q.put({"type": "error", "message": msg})
             except Exception as exc:
                 import traceback
                 logger.exception(f"Diagnosis error for {query}: {exc}")
