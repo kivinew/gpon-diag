@@ -58,8 +58,12 @@ olts:
     host: "172.16.37.252"
     port: 23
     credential_key: "RADIUS"
-  - name: "пос.Звёздный, д.Мозжуха"
+  - name: "Мозжуха, Улус"
     host: "172.16.37.253"
+    port: 23
+    credential_key: "RADIUS"
+  - name: "Звёздный"
+    host: "172.16.37.247"
     port: 23
     credential_key: "RADIUS"
   - name: "пос.Барзас"
