@@ -22,6 +22,23 @@ class MacDevice:
 
 
 @dataclass
+class OntSummary:
+    """Lightweight ONT summary from 'display ont info summary'."""
+    ont_id: str = ""
+    status: str = ""
+    rx_power: float = 999.0
+    tx_power: float = 999.0
+    distance: int = -1
+    last_down_cause: str = ""
+    description: str = ""
+    collected_at: str = ""
+
+    @property
+    def is_online(self) -> bool:
+        return self.status.lower() in ("online", "working")
+
+
+@dataclass
 class OntMetrics:
     address: str = ""
     frame: str = ""
@@ -93,3 +110,29 @@ class OntMetrics:
     @property
     def has_lan_activity(self) -> bool:
         return any(p.link_state == "up" for p in self.lan_ports)
+
+
+@dataclass
+class OntSummary:
+    """Lightweight ONT summary from 'display ont info summary' command."""
+    ont_id: str
+    status: str
+    rx_power: float = 999.0
+    tx_power: float = 999.0
+    distance: int = -1
+    last_down_cause: str = ""
+    description: str = ""
+    collected_at: str = field(default_factory=lambda: datetime.now().isoformat())
+
+    @property
+    def is_online(self) -> bool:
+        return self.status.lower() in ("online", "working")
+
+    @property
+    def rx_power_status(self) -> str:
+        """Return status based on thresholds: 'ok', 'warn', 'crit'."""
+        if self.rx_power <= -30.0:
+            return "crit"
+        if self.rx_power <= -26.0:
+            return "warn"
+        return "ok"

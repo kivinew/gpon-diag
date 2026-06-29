@@ -271,7 +271,7 @@ class OltConnection:
         status_match = re.search(r"Run state\s*: *(.+)", results["ont_info"])
         is_online = status_match and "online" in status_match.group(1).lower()
         if not is_online:
-            _log("  ONT offline, пропуск остальных команд")
+            _log("  ONT offline, skipping other commands")
             _log("  register-info...")
             results["register_info"] = self.send_command(
                 f"display ont register-info {frame} {slot} {port} {ont_id}", max_more=-1
@@ -317,7 +317,7 @@ class OltConnection:
             f"display mac-address ont {frame}/{slot}/{port} {ont_id}", max_more=-1
         )
         results["mac_addresses"] = mac_raw
-        _log(f"OK ({mac_raw.count(chr(10))} строк)")
+        _log(f"OK ({mac_raw.count(chr(10))} lines)")
 
         _log("  wan-info...")
         results["wan_info"] = self.send_command(
@@ -338,6 +338,30 @@ class OltConnection:
         _log("OK")
 
         return results
+
+    def collect_port_summary(self, frame, slot, port, log=None):
+        """Collect 'display ont info summary' for all ONTs on a GPON port.
+        Returns list of OntSummary objects.
+        """
+        from core.parser import parse_ont_info_summary
+
+        _log = log or (lambda msg, end=" ", flush=True: print(msg, end=end, flush=flush))
+
+        for param_name, param_value in [("frame", frame), ("slot", slot), ("port", port)]:
+            if not re.fullmatch(r'\d+', param_value):
+                raise ValueError(f"Invalid {param_name}: {param_value}")
+
+        self._drain_socket()
+
+        _log("  port summary...")
+        output = self.send_command(
+            f"display ont info summary {frame} {slot} {port}", max_more=-1
+        )
+        _log("OK")
+
+        summaries = parse_ont_info_summary(output)
+        _log(f"  parsed {len(summaries)} ONTs")
+        return summaries
 
     def clear_line_quality(self, frame, slot, port, ont_id):
         self._gpon_ctx(frame, slot)

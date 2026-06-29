@@ -46,6 +46,21 @@ class Diagnosis(db.Model):
     report_json = db.Column(db.Text, nullable=False)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(TZ_LOCAL))
 
+
+class PortSnapshot(db.Model):
+    """Snapshot of all ONTs on a GPON port collected via 'display ont info summary'."""
+    __tablename__ = "port_snapshots"
+    id = db.Column(db.Integer, primary_key=True)
+    timestamp = db.Column(db.String, nullable=False)
+    olt_name = db.Column(db.String, nullable=False)
+    olt_host = db.Column(db.String, nullable=False)
+    frame = db.Column(db.String, nullable=False)
+    slot = db.Column(db.String, nullable=False)
+    port = db.Column(db.String, nullable=False)
+    ont_count = db.Column(db.Integer, nullable=False, default=0)
+    data_json = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(TZ_LOCAL))
+
 with app.app_context():
     db.create_all()
     try:
@@ -53,6 +68,7 @@ with app.app_context():
     except Exception:
         db.session.execute(text("ALTER TABLE diagnoses ADD COLUMN olt_name TEXT NOT NULL DEFAULT ''"))
         db.session.commit()
+    # Ensure port_snapshots table exists (create_all handles it)
 
 def build_thresholds(config):
     t = config.get("thresholds", {})

@@ -280,3 +280,77 @@ def parse_ping_result(raw: str, m: OntMetrics) -> None:
         "loss_pct": int(loss_pct.group(1)) if loss_pct else -1,
         "avg_rtt": int(avg_rtt.group(1)) if avg_rtt else -1,
     }
+
+
+def parse_ont_info_summary(raw: str) -> list:
+    """
+    Parse 'display ont info summary <frame>/<slot>/<port>' output.
+
+    Expected table format:
+    --------------------------------------------------------------------------------
+    F/S/P                 : 0/0/0
+    ONT-ID  Run state   Config state  Match state  ONT distance  Description
+    --------------------------------------------------------------------------------
+    0       online      normal        match        1234          ONT_001
+    1       offline     normal        -            -             ONT_002
+    ...
+
+    Returns list of OntSummary objects.
+    """
+    from core.models import OntSummary
+    from datetime import datetime
+
+    raw = strip_ansi(raw)
+    results = []
+
+    # Find the table header and data lines
+    lines = raw.strip().split('\n')
+    in_table = False
+
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
+
+        # Detect start of data table (after header separator)
+        if line.startswith('---') or 'F/S/P' in line and 'ONT-ID' in line:
+            in_table = True
+            continue
+
+        if not in_table:
+            continue
+
+        # Stop at next command prompt or empty section
+        if line.startswith('<') or line.startswith('[') or re.match(r'^\S+[>#]', line):
+            break
+
+        # Parse data line: ONT-ID  Run state  Config state  Match state  ONT distance  Description
+        # Example: "0       online      normal        match        1234          ONT_001"
+        # Or: "1       offline     normal        -            -             ONT_002"
+        parts = re.split(r'\s{2,}', line)
+        if len(parts) >= 5:
+            try:
+                ont_id = parts[0].strip()
+                status = parts[1].strip()
+                # config_state = parts[2].strip()  # not used
+                # match_state = parts[3].strip()   # not used
+                distance_str = parts[4].strip()
+                description = parts[5].strip() if len(parts) > 5 else ""
+
+                distance = int(distance_str) if distance_str.isdigit() else -1
+
+                # Rx/Tx power not available in summary - will be 999.0 (unknown)
+                results.append(OntSummary(
+                    ont_id=ont_id,
+                    status=status,
+                    rx_power=999.0,
+                    tx_power=999.0,
+                    distance=distance,
+                    last_down_cause="",
+                    description=description,
+                    collected_at=datetime.now().isoformat()
+                ))
+            except (ValueError, IndexError):
+                continue
+
+    return results
