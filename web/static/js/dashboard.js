@@ -140,7 +140,16 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ query, olt_host: state.currentOlt })
             });
-            const data = await response.json();
+
+            let data;
+            try {
+                data = await response.json();
+            } catch (parseErr) {
+                hideOverlay();
+                console.error('JSON parse error:', parseErr);
+                alert('Ошибка сервера: получен не JSON ответ. Проверьте доступность OLT.');
+                return;
+            }
             hideOverlay();
 
             if (data.error) {
@@ -334,6 +343,14 @@
         if (!ont || !ont.address) return;
         cancelPortMonitor();
 
+        // Show placeholder panel immediately
+        const portPanel = document.getElementById('portMonitorPanel');
+        if (portPanel) {
+            portPanel.style.display = 'flex';
+            document.getElementById('portMonitorAddr').textContent = `${ont.address.split('/')[0]}/${ont.address.split('/')[1]}/${ont.address.split('/')[2]}`;
+            document.getElementById('portTableBody').innerHTML = '<tr><td colspan="8" class="text-muted" style="text-align:center;">Загрузка...</td></tr>';
+        }
+
         fetch('/api/port-monitor', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -383,6 +400,8 @@
                         if (msg.type === 'result' && msg.summaries) {
                             state.portSummaries = msg.summaries;
                             renderPortMonitor(msg.summaries, msg.port);
+                        } else if (msg.type === 'error') {
+                            console.warn('Port monitor stream error:', msg.message);
                         }
                     } catch (e) {
                         console.error('Port monitor parse error:', e);

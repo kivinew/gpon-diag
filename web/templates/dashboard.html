@@ -72,6 +72,31 @@
                 </div>
             </section>
 
+            <!-- Port Monitor Panel (populated dynamically) -->
+            <section class="panel panel-port-monitor" id="portMonitorPanel" style="display:none;">
+                <div class="panel-header">
+                    <h2>ONT на порту <span id="portMonitorAddr">—</span></h2>
+                    <span class="panel-badge" id="portOntCount">0 ONT</span>
+                </div>
+                <div class="port-table-container">
+                    <table class="port-table">
+                        <thead>
+                            <tr>
+                                <th>ONT ID</th>
+                                <th>Статус</th>
+                                <th>Rx (dBm)</th>
+                                <th>Tx (dBm)</th>
+                                <th>Дист (м)</th>
+                                <th>Причина</th>
+                                <th>Дескрипшн</th>
+                                <th>Время</th>
+                            </tr>
+                        </thead>
+                        <tbody id="portTableBody"></tbody>
+                    </table>
+                </div>
+            </section>
+
             <section class="panel panel-diag" id="diagPanel">
                 <div class="panel-header">
                     <h2>Диагностика</h2>

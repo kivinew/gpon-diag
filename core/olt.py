@@ -11,7 +11,8 @@ logger = logging.getLogger(__name__)
 
 MORE_PROMPT = "---- More ( Press 'Q' to break ) ----"
 
-_olt_registry: Dict[str, 'OltConnection'] = {}
+_olt_registry: Dict[str, list] = {}  # List of connections per OLT (pool of 2)
+_MAX_CONNECTIONS_PER_OLT = 2
 
 
 class OntNotFoundError(Exception):
@@ -20,18 +21,59 @@ class OntNotFoundError(Exception):
 
 def get_olt_connection(host: str, port: int = 23,
                        username: str = "", password: str = "",
-                       timeout: int = 15) -> 'OltConnection':
-    """Get or create singleton OLT connection."""
+                       timeout: int = 15,
+                       pool_index: Optional[int] = None) -> 'OltConnection':
+    """Get or create connection from pool (max 2 per OLT).
+
+    If pool_index is specified, returns that specific connection.
+    Otherwise, returns the first available (or creates one).
+    """
     key = f"{host}:{port}"
+
+    # Skip blocked connections (circuit breaker open)
+    if key in _olt_registry and pool_index is None:
+        pool = _olt_registry[key]
+        # Check if all connections in pool are blocked
+        all_blocked = all(conn._skip_disconnect for conn in pool) if pool else False
+        if all_blocked:
+            # Clear pool and start fresh
+            for conn in pool:
+                try: conn.disconnect()
+                except: pass
+            _olt_registry[key] = []
+            pool = []
+
     if key not in _olt_registry:
-        _olt_registry[key] = OltConnection(host, port, username, password, timeout)
-    return _olt_registry[key]
+        _olt_registry[key] = []
+
+    pool = _olt_registry[key]
+
+    if pool_index is not None:
+        while len(pool) <= pool_index:
+            pool.append(OltConnection(host, port, username, password, timeout))
+        conn = pool[pool_index]
+        if not conn._connected and not conn._skip_disconnect:
+            try: conn.connect()
+            except Exception: pass
+        return conn
+
+    for conn in pool:
+        if conn._connected and not conn._skip_disconnect:
+            return conn
+
+    if len(pool) < _MAX_CONNECTIONS_PER_OLT:
+        conn = OltConnection(host, port, username, password, timeout)
+        pool.append(conn)
+        return conn
+
+    return pool[0]
 
 
 def close_all():
-    """Close all OLT connections."""
-    for conn in _olt_registry.values():
-        conn.disconnect()
+    """Close all OLT connections in the pool."""
+    for pool in _olt_registry.values():
+        for conn in pool:
+            conn.disconnect()
     _olt_registry.clear()
 
 
@@ -63,6 +105,16 @@ class OltConnection:
         self.timeout = timeout
         self._sock: Optional[socket.socket] = None
         self._connected = False
+        self._last_used: float = 0.0
+        self._max_idle_seconds: int = 120
+        self._skip_disconnect: bool = False  # If True, don't reconnect to preserve sessions
+
+    def _check_idle_timeout(self):
+        """Auto-disconnect if idle too long (prevents session exhaustion)."""
+        now = time.time()
+        if self._connected and (now - self._last_used) > self._max_idle_seconds:
+            logger.info(f"Auto-disconnecting idle connection to {self.host}")
+            self.disconnect()
 
     def connect(self):
         try:
@@ -157,11 +209,17 @@ class OltConnection:
         try:
             self._sock.sendall(text.encode("utf-8"))
         except (ConnectionResetError, BrokenPipeError, OSError) as e:
+            if self._skip_disconnect:
+                raise  # Don't reconnect if circuit breaker is open
             logger.warning(f"Write failed ({e}), reconnecting...")
             self._connected = False
             self._sock = None
-            self.connect()
-            self._sock.sendall(text.encode("utf-8"))
+            try:
+                self.connect()
+                self._sock.sendall(text.encode("utf-8"))
+            except Exception as reconnect_err:
+                self._skip_disconnect = True  # Open circuit breaker
+                raise reconnect_err
 
     def _read_to_prompt(self, seconds=2):
         buf = b""
@@ -184,6 +242,16 @@ class OltConnection:
         return buf.decode("utf-8", errors="ignore")
 
     def send_command(self, command, max_more=0):
+        # Check idle timeout before using connection
+        self._check_idle_timeout()
+        self._last_used = time.time()
+
+        # Check if socket is valid
+        if self._sock is None or not self._connected:
+            if self._skip_disconnect:
+                raise ConnectionError(f"Connection to {self.host} is blocked (circuit breaker open)")
+            self._connected = False
+
         try:
             self._write(command + "\r")
             output = self._read_to_prompt(5)

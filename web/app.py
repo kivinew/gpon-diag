@@ -358,8 +358,6 @@ def api_search():
                     "distance_m": metrics.distance_m
                 })
 
-            close_all()
-
         except Exception as e:
             logger.warning(f"Search failed on {host}: {e}")
             continue
@@ -418,8 +416,6 @@ def api_optics():
             parse_ont_info(raw_data["ont_info"], metrics)
         if "line_quality" in raw_data:
             parse_line_quality(raw_data["line_quality"], metrics)
-
-        close_all()
 
         return {
             "ont_rx_power": metrics.ont_rx_power,
@@ -626,10 +622,28 @@ def api_port_monitor():
     def worker():
         with app.app_context():
             try:
-                from core.olt import OltConnection
-
-                monitor_conn = OltConnection(host, port_num, username, password, 30)
-                monitor_conn.connect()
+                # Get SECOND connection from pool (index 1) - parallel to main diagnosis
+                monitor_conn = get_olt_connection(
+                    host, port_num, username, password, 30, pool_index=1
+                )
+                if not monitor_conn._connected and not monitor_conn._skip_disconnect:
+                    try:
+                        monitor_conn.connect()
+                    except Exception as conn_err:
+                        logger.warning(f"Port monitor conn failed, using fallback OLT: {conn_err}")
+                        # Fallback: try another OLT from config
+                        for alt_olt in config.get("olts", []):
+                            if alt_olt.get("host") == olt_config.get("host"):
+                                continue
+                            try:
+                                monitor_conn = get_olt_connection(
+                                    alt_olt["host"], alt_olt.get("port", 23),
+                                    _load_olt_credentials(alt_olt)[0],
+                                    password, 30, pool_index=1
+                                )
+                                break
+                            except Exception:
+                                continue
 
                 log_fn("  port summary...")
                 summaries = monitor_conn.collect_port_summary(
