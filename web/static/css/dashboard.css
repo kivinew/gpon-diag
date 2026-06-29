@@ -1139,3 +1139,64 @@ body {
     font-size: 11px;
     color: #f87171;
 }
+
+/* --- Port Monitor Panel --- */
+.panel-port-monitor {
+    grid-column: 1 / -1;
+    margin-top: 20px;
+}
+
+.port-table-container {
+    flex: 1;
+    overflow-y: auto;
+}
+
+.port-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    background: rgba(15,23,42,0.6);
+    border: 1px solid rgba(56,189,248,0.1);
+    border-radius: 8px;
+}
+
+.port-table thead {
+    background: rgba(30,41,59,0.8);
+}
+
+.port-table th {
+    padding: 10px 12px;
+    text-align: left;
+    font-size: 11px;
+    font-weight: 600;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.port-table td {
+    padding: 8px 12px;
+    font-size: 12px;
+    color: #cbd5e1;
+    border-top: 1px solid rgba(56,189,248,0.06);
+}
+
+.port-table tr:first-child td {
+    border-top: none;
+}
+
+.port-table tr:hover td {
+    background: rgba(56,189,248,0.05);
+}
+
+.port-table .ok {
+    color: #4ade80;
+}
+
+.port-table .warn {
+    color: #fbbf24;
+}
+
+.port-table .crit {
+    color: #f87171;
+}

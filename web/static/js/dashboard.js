@@ -17,7 +17,11 @@
         currentDiagnosis: null,
         eventSource: null,
         autoRefreshOptics: true,
-        opticsRefreshMs: 10000
+        opticsRefreshMs: 10000,
+        portMonitorInterval: null,
+        portMonitorReader: null,
+        portSummaries: [],
+        lastPortMonitored: null
     };
 
     // ============================================================
@@ -324,10 +328,143 @@
     });
 
     // ============================================================
+    // Port Monitoring (runs parallel to diagnosis)
+    // ============================================================
+    function startPortMonitor(ont) {
+        if (!ont || !ont.address) return;
+        cancelPortMonitor();
+
+        fetch('/api/port-monitor', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ address: ont.address, olt_host: ont.olt_host })
+        }).then(response => {
+            if (!response.ok) {
+                console.error('Port monitor failed:', response.statusText);
+                return;
+            }
+            state.portMonitorReader = response.body.getReader();
+            state.lastPortMonitored = {
+                frame: ont.address.split('/')[0],
+                slot: ont.address.split('/')[1],
+                port: ont.address.split('/')[2]
+            };
+            processPortMonitorStream();
+        }).catch(err => {
+            console.error('Port monitor error:', err);
+        });
+    }
+
+    function cancelPortMonitor() {
+        if (state.portMonitorReader) {
+            try { state.portMonitorReader.cancel(); } catch (e) {}
+            state.portMonitorReader = null;
+        }
+    }
+
+    async function processPortMonitorStream() {
+        if (!state.portMonitorReader) return;
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+            try {
+                const { done, value } = await state.portMonitorReader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split('\n');
+                buffer = lines.pop();
+
+                for (const line of lines) {
+                    if (!line.startsWith('data: ')) continue;
+                    try {
+                        const msg = JSON.parse(line.slice(6));
+                        if (msg.type === 'result' && msg.summaries) {
+                            state.portSummaries = msg.summaries;
+                            renderPortMonitor(msg.summaries, msg.port);
+                        }
+                    } catch (e) {
+                        console.error('Port monitor parse error:', e);
+                    }
+                }
+            } catch (e) {
+                if (e.name !== 'AbortError') console.error('Port monitor stream error:', e);
+                break;
+            }
+        }
+    }
+
+    function renderPortMonitor(summaries, port) {
+        let portPanel = document.getElementById('portMonitorPanel');
+        if (!portPanel) {
+            portPanel = document.createElement('section');
+            portPanel.id = 'portMonitorPanel';
+            portPanel.className = 'panel panel-port-monitor';
+            portPanel.innerHTML = `
+                <div class="panel-header">
+                    <h2>ONT на порту ${port || '—'}</h2>
+                    <span class="panel-badge" id="portOntCount">${summaries.length} ONT</span>
+                </div>
+                <div class="port-table-container">
+                    <table class="port-table">
+                        <thead>
+                            <tr>
+                                <th>ONT ID</th>
+                                <th>Статус</th>
+                                <th>Rx (dBm)</th>
+                                <th>Tx (dBm)</th>
+                                <th>Дист (м)</th>
+                                <th>Причина</th>
+                                <th>Дескрипшн</th>
+                                <th>Время</th>
+                            </tr>
+                        </thead>
+                        <tbody id="portTableBody"></tbody>
+                    </table>
+                </div>
+            `;
+            const opticsPanel = document.getElementById('opticsPanel');
+            if (opticsPanel && opticsPanel.parentNode) {
+                opticsPanel.parentNode.insertBefore(portPanel, opticsPanel.nextSibling);
+            }
+        }
+
+        const countEl = document.getElementById('portOntCount');
+        if (countEl) countEl.textContent = `${summaries.length} ONT`;
+
+        const tbody = document.getElementById('portTableBody');
+        if (tbody) {
+            tbody.innerHTML = summaries.map(s => {
+                const statusCls = s.is_online ? 'online' : 'offline';
+                const statusText = s.is_online ? 'ONLINE' : (s.status || '—').toUpperCase();
+                const rxCls = s.rx_power_status === 'ok' ? 'ok' : (s.rx_power_status === 'warn' ? 'warn' : 'crit');
+                const rxDisplay = (s.rx_power < 900) ? s.rx_power.toFixed(2) : '—';
+                const txDisplay = (s.tx_power < 900) ? s.tx_power.toFixed(2) : '—';
+
+                return `
+                    <tr>
+                        <td><strong>${escapeHtml(s.ont_id)}</strong></td>
+                        <td><span class="status-badge ${statusCls}">${escapeHtml(statusText)}</span></td>
+                        <td class="${rxCls}">${rxDisplay}</td>
+                        <td>${txDisplay}</td>
+                        <td>${s.distance > 0 ? s.distance : '—'}</td>
+                        <td>${escapeHtml(s.last_down_cause) || '—'}</td>
+                        <td>${escapeHtml(s.description) || '—'}</td>
+                        <td class="text-muted">${escapeHtml(s.collected_at || '—')}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+    }
+
+    // ============================================================
     // Diagnostics with SSE
     // ============================================================
     els.runDiagBtn.addEventListener('click', () => {
         if (!state.selectedOnt) return;
+        // Start port monitoring in parallel
+        startPortMonitor(state.selectedOnt);
         runDiagnosis(state.selectedOnt);
     });
 

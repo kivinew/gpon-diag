@@ -233,6 +233,79 @@ def test_web_routes():
         print("PASSED: web routes\n")
 
 
+def test_parse_ont_info_summary():
+    """Test parsing of 'display ont info summary' output."""
+    from core.parser import parse_ont_info_summary
+    from core.models import OntSummary
+
+    raw = """
+  --------------------------------------------------------------------------------
+  F/S/P                 : 0/1/3
+  ONT-ID  Run state   Config state  Match state  ONT distance  Description
+  --------------------------------------------------------------------------------
+  0       online      normal        match        1234          ONT_001
+  1       online      normal        match        1500          ONT_002
+  2       offline     normal        -            -             ONT_003
+  3       online      normal        match        800           office_004
+  --------------------------------------------------------------------------------
+  """
+    summaries = parse_ont_info_summary(raw)
+
+    print("=== TEST 5: parse_ont_info_summary ===")
+    assert len(summaries) == 4, f"Expected 4 summaries, got {len(summaries)}"
+
+    # Check first summary
+    s0 = summaries[0]
+    assert s0.ont_id == "0"
+    assert s0.status == "online"
+    assert s0.distance == 1234
+    assert s0.description == "ONT_001"
+    assert s0.is_online is True
+
+    # Check offline summary
+    s2 = summaries[2]
+    assert s2.status == "offline"
+    assert s2.distance == -1
+    assert s2.is_online is False
+
+    print(f"  Parsed {len(summaries)} summaries: {[s.ont_id for s in summaries]}")
+    print("PASSED\n")
+
+
+def test_port_snapshot_model():
+    """Test PortSnapshot database model exists and works."""
+    import sys
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from web.app import app, PortSnapshot, db
+
+    with app.app_context():
+        # Create a test snapshot
+        snapshot = PortSnapshot(
+            timestamp="2026-06-30 12:00:00",
+            olt_name="OLT-TEST",
+            olt_host="192.168.1.1",
+            frame="0",
+            slot="1",
+            port="3",
+            ont_count=5,
+            data_json='[{"ont_id": "0", "status": "online"}]'
+        )
+        db.session.add(snapshot)
+        db.session.commit()
+
+        # Query it back
+        retrieved = PortSnapshot.query.filter_by(olt_name="OLT-TEST").first()
+        assert retrieved is not None
+        assert retrieved.ont_count == 5
+        assert "ont_id" in retrieved.data_json
+
+        # Cleanup
+        db.session.delete(retrieved)
+        db.session.commit()
+
+        print("PASSED: PortSnapshot model\n")
+
+
 if __name__ == "__main__":
     test_offline_dying_gasp()
     test_online_healthy()
@@ -240,5 +313,7 @@ if __name__ == "__main__":
     test_parse_fsp_fl_prefix()
     test_parse_input_types()
     test_web_routes()
+    test_parse_ont_info_summary()
+    test_port_snapshot_model()
     print("=" * 40)
     print("ALL TESTS PASSED")

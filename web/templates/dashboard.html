@@ -118,23 +118,17 @@
                                 <td>{{ row.ont_address }}</td>
                                 <td>{{ row.input_value }}</td>
                                 <td>
-                                    {% if row.report_json %}
-                                    {% set report = row.report_json | fromjson %}
-                                    {% if report.is_online %}
+                                    {% if row.report and row.report.is_online %}
                                     <span class="status-badge online">ONLINE</span>
-                                    {% else %}
+                                    {% elif row.report %}
                                     <span class="status-badge offline">OFFLINE</span>
-                                    {% endif %}
                                     {% endif %}
                                 </td>
                                 <td>
-                                    {% if row.report_json %}
-                                    {% set report = row.report_json | fromjson %}
-                                    {% if report.problems and report.problems|length > 0 %}
-                                    <span class="problems-count">{{ report.problems|length }}</span>
+                                    {% if row.report and row.report.problems and row.report.problems|length > 0 %}
+                                    <span class="problems-count">{{ row.report.problems|length }}</span>
                                     {% else %}
                                     <span class="problems-count ok">0</span>
-                                    {% endif %}
                                     {% endif %}
                                 </td>
                             </tr>

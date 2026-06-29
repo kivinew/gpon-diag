@@ -246,7 +246,24 @@ def index():
 def dashboard():
     config = load_config()
     olts = config.get("olts", [])
-    history = Diagnosis.query.order_by(Diagnosis.created_at.desc()).limit(20).all()
+    history_raw = Diagnosis.query.order_by(Diagnosis.created_at.desc()).limit(20).all()
+    # Pre-parse report_json for template compatibility
+    history = []
+    for h in history_raw:
+        try:
+            import json
+            report = json.loads(h.report_json) if h.report_json else {}
+        except (json.JSONDecodeError, TypeError):
+            report = {}
+        history.append({
+            'id': h.id,
+            'created_at': h.created_at,
+            'olt_name': h.olt_name,
+            'olt_host': h.olt_host,
+            'ont_address': h.ont_address,
+            'input_value': h.input_value,
+            'report': report
+        })
     return render_template("dashboard.html", olts=olts, history=history)
 
 # Simple health-check endpoint for diagnostics
@@ -569,6 +586,121 @@ def orchestrator_set_status():
     card.agent_id = request.json.get("agent_id", "")
     card.save()
     return {"task_id": task_id, "status": card.status.value}
+
+
+@app.route("/api/port-monitor", methods=["POST"])
+def api_port_monitor():
+    """SSE endpoint for port monitoring - collects 'display ont info summary' for all ONTs on a GPON port.
+    Runs in background thread parallel to main diagnosis.
+    """
+    data = request.get_json(silent=True) or {}
+    address = data.get("address", "").strip()
+    olt_host = data.get("olt_host", "").strip()
+
+    if not address or not olt_host:
+        return {"error": "Укажите адрес ONT (F/S/P/ONT) и OLT."}, 400
+
+    config = load_config()
+    olt_config = find_olt_by_host(config, olt_host)
+    if not olt_config:
+        return {"error": f"OLT {olt_host} не найден."}, 400
+
+    parts = address.split("/")
+    if len(parts) != 4:
+        return {"error": "Неверный формат адреса. Ожидается F/S/P/ONT."}, 400
+    frame, slot, port, ont_id = parts
+
+    host = olt_config["host"]
+    port_num = olt_config.get("port", 23)
+    username, password = _load_olt_credentials(olt_config)
+    if not username or not password:
+        return {"error": "Нет учетных данных для OLT."}, 400
+
+    log_q = queue.Queue()
+
+    def log_fn(msg, end=" ", flush=True):
+        text = str(msg)
+        print(text, flush=flush)
+        log_q.put(text)
+
+    def worker():
+        with app.app_context():
+            try:
+                from core.olt import OltConnection
+
+                monitor_conn = OltConnection(host, port_num, username, password, 30)
+                monitor_conn.connect()
+
+                log_fn("  port summary...")
+                summaries = monitor_conn.collect_port_summary(
+                    sanitize_ont_param(frame),
+                    sanitize_ont_param(slot),
+                    sanitize_ont_param(port),
+                    log=log_fn
+                )
+                log_fn("OK")
+
+                from core.models import OntSummary
+                snapshot_data = []
+                for s in summaries:
+                    snapshot_data.append({
+                        "ont_id": s.ont_id,
+                        "status": s.status,
+                        "rx_power": s.rx_power,
+                        "tx_power": s.tx_power,
+                        "distance": s.distance,
+                        "last_down_cause": s.last_down_cause,
+                        "description": s.description,
+                        "collected_at": s.collected_at or datetime.now().isoformat(),
+                        "is_online": s.is_online,
+                        "rx_power_status": s.rx_power_status
+                    })
+
+                log_q.put({"type": "result", "summaries": snapshot_data, "count": len(snapshot_data)})
+
+                snapshot = PortSnapshot(
+                    timestamp=datetime.now(TZ_LOCAL).strftime("%Y-%m-%d %H:%M:%S"),
+                    olt_name=olt_config.get("name", host),
+                    olt_host=host,
+                    frame=frame,
+                    slot=slot,
+                    port=port,
+                    ont_count=len(snapshot_data),
+                    data_json=json.dumps(snapshot_data, ensure_ascii=False)
+                )
+                db.session.add(snapshot)
+                db.session.commit()
+                log_fn("  snapshot saved")
+
+                monitor_conn.disconnect()
+
+            except Exception as exc:
+                import traceback
+                logger.exception(f"Port monitor error: {exc}")
+                log_q.put({"type": "error", "message": f"{exc}\n{traceback.format_exc()}"})
+            finally:
+                log_q.put(None)
+
+    t = threading.Thread(target=worker, daemon=True)
+    t.start()
+
+    def generate():
+        while True:
+            try:
+                item = log_q.get(timeout=60)
+            except queue.Empty:
+                yield f"data: {json.dumps({'type': 'error', 'message': 'Таймаут сбора данных порта.'})}\n\n"
+                return
+            if item is None:
+                return
+            if isinstance(item, dict):
+                yield f"data: {json.dumps(item, ensure_ascii=False)}\n\n"
+            else:
+                yield f"data: {json.dumps({'type': 'log', 'line': str(item)}, ensure_ascii=False)}\n\n"
+
+    return Response(generate(), mimetype="text/event-stream",
+                    headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
 
 if __name__ == "__main__":
     # Production server is started via scripts/check_and_start_server.py

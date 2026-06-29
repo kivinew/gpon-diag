@@ -312,15 +312,14 @@ def parse_ont_info_summary(raw: str) -> list:
         if not line:
             continue
 
-        # Detect start of data table (after header separator)
-        if line.startswith('---') or 'F/S/P' in line and 'ONT-ID' in line:
-            in_table = True
+        # Skip separator lines and header
+        if line.startswith('---'):
+            continue
+        if 'ONT-ID' in line or 'Run state' in line:
+            # This is the column header line, skip it
             continue
 
-        if not in_table:
-            continue
-
-        # Stop at next command prompt or empty section
+        # Stop at next command prompt or log marker
         if line.startswith('<') or line.startswith('[') or re.match(r'^\S+[>#]', line):
             break
 
