@@ -113,7 +113,15 @@
         const host = els.oltSelect.value;
         state.currentOlt = host || null;
         els.currentOlt.textContent = host ? `OLT: ${host}` : '—';
+        // Reset OLT connections when switching OLT to avoid blocked connections
+        try {
+            await fetch('/api/reset-connections', { method: 'POST' });
+        } catch (e) {}
         await loadHistory();
+        // Clear optics and port monitor panels
+        els.opticsContent.innerHTML = '<div class="optics-empty">Выберите ONT для мониторинга</div>';
+        const portPanel = document.getElementById('portMonitorPanel');
+        if (portPanel) portPanel.style.display = 'none';
     });
 
     els.refreshBtn.addEventListener('click', async () => {
@@ -319,7 +327,7 @@
     function startOpticsAutoRefresh() {
         if (state.opticsInterval) clearInterval(state.opticsInterval);
         state.opticsInterval = setInterval(() => {
-            if (state.autoRefreshOptics && state.selectedOnt) {
+            if (state.autoRefreshOptics && state.selectedOnt && state.selectedOnt.address) {
                 fetchOptics(state.selectedOnt);
             }
         }, state.opticsRefreshMs);

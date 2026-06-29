@@ -303,6 +303,9 @@ def api_search():
 
         try:
             olt = get_olt_connection(host, port, username, password, 15)
+            if olt._skip_disconnect:
+                logger.warning(f"Skipping blocked OLT {host} in search")
+                continue  # Try next OLT
             olt.connect()
             # Wait for connection to stabilize after login
             time.sleep(1)
@@ -393,6 +396,8 @@ def api_optics():
 
     try:
         olt = get_olt_connection(host, port, username, password, 15)
+        if olt._skip_disconnect:
+            return {"error": f"OLT {olt_host} временно недоступен (телнет-блокировка). Выберите другой OLT в выпадающем списке."}, 503
         olt.connect()
 
         raw_data = olt.collect_ont(
@@ -437,6 +442,12 @@ def api_optics():
     except Exception as e:
         logger.exception(f"Optics fetch error: {e}")
         return {"error": str(e)}, 500
+
+@app.route("/api/reset-connections", methods=["POST"])
+def api_reset_connections():
+    """Reset all OLT connections in the pool (useful when switching OLT or on connection errors)."""
+    close_all()
+    return {"status": "connections reset"}
 
 @app.route("/api/history/<int:diag_id>", methods=["GET"])
 def api_history_detail(diag_id):

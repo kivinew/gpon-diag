@@ -15,6 +15,13 @@ except Exception:
     pass
 
 if __name__ == "__main__":
+    # Clean up any stale OLT connections on startup
+    try:
+        from core.olt import close_all
+        close_all()
+    except Exception:
+        pass
+
     # Import Flask app
     try:
         from web.app import app as flask_app

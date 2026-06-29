@@ -117,6 +117,12 @@ class OltConnection:
             self.disconnect()
 
     def connect(self):
+        # Reset socket and circuit breaker state before attempting new connection
+        if self._sock:
+            try: self._sock.close()
+            except: pass
+        self._sock = None
+        self._skip_disconnect = False  # Reset circuit breaker for fresh connection attempt
         try:
             self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self._sock.settimeout(self.timeout)
@@ -206,16 +212,20 @@ class OltConnection:
         self.disconnect()
 
     def _write(self, text):
+        if self._skip_disconnect:
+            raise ConnectionError(f"Connection to {self.host} is blocked (circuit breaker open)")
         try:
+            if self._sock is None:
+                raise OSError("Socket not initialized")
             self._sock.sendall(text.encode("utf-8"))
         except (ConnectionResetError, BrokenPipeError, OSError) as e:
-            if self._skip_disconnect:
-                raise  # Don't reconnect if circuit breaker is open
             logger.warning(f"Write failed ({e}), reconnecting...")
             self._connected = False
             self._sock = None
             try:
                 self.connect()
+                if self._sock is None:
+                    raise OSError("Reconnect failed - socket still None")
                 self._sock.sendall(text.encode("utf-8"))
             except Exception as reconnect_err:
                 self._skip_disconnect = True  # Open circuit breaker
@@ -242,14 +252,16 @@ class OltConnection:
         return buf.decode("utf-8", errors="ignore")
 
     def send_command(self, command, max_more=0):
+        # Check if connection is blocked before anything else
+        if self._skip_disconnect:
+            raise ConnectionError(f"Connection to {self.host} is blocked (circuit breaker open)")
+
         # Check idle timeout before using connection
         self._check_idle_timeout()
         self._last_used = time.time()
 
         # Check if socket is valid
         if self._sock is None or not self._connected:
-            if self._skip_disconnect:
-                raise ConnectionError(f"Connection to {self.host} is blocked (circuit breaker open)")
             self._connected = False
 
         try:

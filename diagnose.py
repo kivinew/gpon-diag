@@ -322,6 +322,13 @@ def find_available_olt(config):
                 continue
         except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
             continue
+        # Also check if OLT already has blocked connections in pool
+        key = f"{host}:23"
+        if key in _olt_registry:
+            pool = _olt_registry[key]
+            all_blocked = all(conn._skip_disconnect for conn in pool) if pool else False
+            if all_blocked:
+                continue  # Skip this OLT, it's blocked
         return olt_config
     return None
 
