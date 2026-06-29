@@ -153,9 +153,34 @@ def test_low_rx():
     print(f"PASSED ({len(problems)} problems)\n")
 
 
+def test_parse_fsp_fl_prefix():
+    """Test that _parse_fsp correctly handles fl_ prefix for numeric descriptions."""
+    from core.olt import OltConnection
+    
+    # Test table format with numeric description (fl_* on ONT)
+    output1 = """
+F/S/P   Description
+0/ 0/6  0  fl_102693
+"""
+    result = OltConnection._parse_fsp(output1)
+    assert result == {"frame": "0", "slot": "0", "port": "6", "ont_id": "0"}
+    
+    # Test key-value format
+    output2 = """
+F/S/P                   : 0/1/3
+ONT-ID                  : 9
+Description             : fl_102693
+"""
+    result = OltConnection._parse_fsp(output2)
+    assert result == {"frame": "0", "slot": "1", "port": "3", "ont_id": "9"}
+
+
 if __name__ == "__main__":
     test_offline_dying_gasp()
     test_online_healthy()
     test_low_rx()
+    test_parse_fsp_fl_prefix()
     print("=" * 40)
     print("ALL TESTS PASSED")
+    
+    print("PASSED\n")
