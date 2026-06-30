@@ -185,7 +185,7 @@ def _load_olt_credentials(olt_config: dict):
     return username, password
 
 
-def run_diagnosis(input_data, olt_config, thresholds, allow_actions=True, log=None, ping_target="1.1.1.1", on_olt_info=None):
+def run_diagnosis(input_data, olt_config, thresholds, allow_actions=True, log=None, ping_target="1.1.1.1", on_olt_info=None, use_ssh=False):
     _log = log or (lambda msg, end=" ", flush=True: print(msg, end=end, flush=flush))
     host = olt_config["host"]
     port = olt_config.get("port", 23)
@@ -196,7 +196,7 @@ def run_diagnosis(input_data, olt_config, thresholds, allow_actions=True, log=No
             f"Set env GPON_OLT_<OLT_NAME>_USERNAME/PASSWORD or use .env file."
         )
 
-    olt = get_olt_connection(host, port, username, password, 30)
+    olt = get_olt_connection(host, port, username, password, 30, use_ssh=use_ssh)
     _log(f"Подключение к головной станции {host}...")
     olt.connect()
     # Wait for connection to stabilize after login - OLT may need time to accept commands
@@ -331,18 +331,9 @@ def run_diagnosis(input_data, olt_config, thresholds, allow_actions=True, log=No
 def find_available_olt(config):
     for olt_config in config.get("olts", []):
         host = olt_config["host"]
-        port = olt_config.get("port", 23)
         username, password = _load_olt_credentials(olt_config)
         if not username or not password:
             continue
-
-        # Check if OLT already has blocked connections in pool (check BEFORE ping)
-        key = f"{host}:{port}"
-        if key in _olt_registry:
-            pool = _olt_registry[key]
-            all_blocked = all(conn._skip_disconnect for conn in pool) if pool else False
-            if all_blocked:
-                continue  # Skip this OLT, it's blocked
 
         # Check reachability via ping (Windows: check for "TTL=" in output for success)
         try:
@@ -351,7 +342,6 @@ def find_available_olt(config):
                 ["ping", "-n", "1", "-w", "2000", host],
                 capture_output=True, timeout=5, text=True
             )
-            # On Windows: TTL= indicates successful response
             if "TTL=" not in result.stdout:
                 continue
         except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
@@ -451,6 +441,8 @@ def main():
                         help="Full diagnostics without port resets and counter clears")
     parser.add_argument("--only-optics", action="store_true",
                         help="Only check optics (powers + BIP errors)")
+    parser.add_argument("--ssh", action="store_true",
+                        help="Use SSH instead of telnet for connection")
     args = parser.parse_args()
 
     if args.input is None:
@@ -500,7 +492,8 @@ def main():
     try:
         report = run_diagnosis(input_data, olt_config, thresholds,
                                allow_actions=not args.no_actions,
-                               ping_target=config.get("ping_target", "1.1.1.1"))
+                               ping_target=config.get("ping_target", "1.1.1.1"),
+                               use_ssh=args.ssh)
     except OntNotFoundError as e:
         print(f"Ошибка: {e}", file=sys.stderr)
         sys.exit(1)
@@ -525,8 +518,10 @@ def main():
         import pyperclip
         pyperclip.copy(output)
         print("\n[Copied to clipboard]")
-    except Exception:
-        pass
+    except ImportError:
+        pass  # pyperclip not installed — clipboard copy skipped
+    except Exception as e:
+        logger.warning("Clipboard copy failed: %s", e)
 
     if not args.no_save:
         try:

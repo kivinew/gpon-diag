@@ -63,31 +63,11 @@ class PortSnapshot(db.Model):
 
 with app.app_context():
     db.create_all()
-    try:
-        db.session.execute(text("SELECT olt_name FROM diagnoses LIMIT 1"))
-    except Exception:
-        db.session.execute(text("ALTER TABLE diagnoses ADD COLUMN olt_name TEXT NOT NULL DEFAULT ''"))
-        db.session.commit()
-    # Ensure port_snapshots table exists (create_all handles it)
+    # olt_name column added; Alembic migrations planned for future schema changes
 
 def build_thresholds(config):
-    t = config.get("thresholds", {})
-    return Thresholds(
-        ont_rx_power_warn=t.get("ont_rx_power_warn_dbm", -26.0),
-        ont_rx_power_crit=t.get("ont_rx_power_crit_dbm", -30.0),
-        olt_rx_power_warn=t.get("olt_rx_power_warn_dbm", -32.0),
-        olt_rx_power_crit=t.get("olt_rx_power_crit_dbm", -35.0),
-        bip_error_warn=t.get("bip_error_warn", 10000),
-        bip_error_crit=t.get("bip_error_crit", 100000),
-        cpu_temp_warn=t.get("cpu_temp_warn_c", 75),
-        cpu_temp_crit=t.get("cpu_temp_crit_c", 85),
-        cpu_usage_warn=t.get("cpu_usage_warn_pct", 80),
-        memory_usage_warn=t.get("memory_usage_warn_pct", 85),
-        distance_warn=t.get("distance_warn_m", 15000),
-        distance_crit=t.get("distance_crit_m", 20000),
-        bad_versions=t.get("bad_versions", []),
-        no_ping_models=t.get("no_ping_models", []),
-    )
+    return _build_thresholds(config)
+
 
 def find_olt_by_host(config, host):
     for olt in config.get("olts", []):

@@ -12,7 +12,9 @@ logger = logging.getLogger(__name__)
 
 def _get_lock_functions():
     """Lazy-load file_lock functions to avoid import issues."""
-    _spec = importlib.util.spec_from_file_location("file_lock", "hermes-lockutils/file_lock.py")
+    _lock_path = os.path.join(os.path.dirname(__file__), "..", "hermes-lockutils", "file_lock.py")
+    _lock_path = os.path.normpath(_lock_path)
+    _spec = importlib.util.spec_from_file_location("file_lock", _lock_path)
     _mod = importlib.util.module_from_spec(_spec)
     _spec.loader.exec_module(_mod)
     return _mod.lock_file, _mod.unlock_file

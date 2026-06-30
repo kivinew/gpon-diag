@@ -16,7 +16,10 @@
       "PowerShell(& \"C:\\\\Users\\\\Administrator\\\\AppData\\\\Local\\\\Programs\\\\Microsoft VS Code\\\\bin\\\\code\" --install-extension @kodadev/koda-cli)",
       "Bash(python -m orchestrator.outer_loop)",
       "WebSearch",
-      "Bash(browser-act *)"
+      "Bash(browser-act *)",
+      "Bash(git rm *)",
+      "Bash(git add *)",
+      "PowerShell(Get-Process *)"
     ]
   }
 }
