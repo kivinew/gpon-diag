@@ -396,9 +396,10 @@ def api_optics():
 
     try:
         olt = get_olt_connection(host, port, username, password, 15)
-        if olt._skip_disconnect:
-            return {"error": f"OLT {olt_host} временно недоступен (телнет-блокировка). Выберите другой OLT в выпадающем списке."}, 503
-        olt.connect()
+        try:
+            olt.connect()
+        except Exception as conn_err:
+            return {"error": f"OLT {olt_host} временно недоступен: {conn_err}. Выберите другой OLT."}, 503
 
         raw_data = olt.collect_ont(
             sanitize_ont_param(frame),

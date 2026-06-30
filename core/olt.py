@@ -30,18 +30,21 @@ def get_olt_connection(host: str, port: int = 23,
     """
     key = f"{host}:{port}"
 
-    # Skip blocked connections (circuit breaker open)
+    # Skip blocked connections - create fresh when circuit breaker is open
     if key in _olt_registry and pool_index is None:
         pool = _olt_registry[key]
         # Check if all connections in pool are blocked
         all_blocked = all(conn._skip_disconnect for conn in pool) if pool else False
         if all_blocked:
-            # Clear pool and start fresh
+            # Clear pool and start fresh connection
             for conn in pool:
                 try: conn.disconnect()
                 except: pass
             _olt_registry[key] = []
             pool = []
+            conn = OltConnection(host, port, username, password, timeout)
+            pool.append(conn)
+            return conn
 
     if key not in _olt_registry:
         _olt_registry[key] = []
@@ -52,7 +55,8 @@ def get_olt_connection(host: str, port: int = 23,
         while len(pool) <= pool_index:
             pool.append(OltConnection(host, port, username, password, timeout))
         conn = pool[pool_index]
-        if not conn._connected and not conn._skip_disconnect:
+        if conn._skip_disconnect and conn._connect_attempts < 3:
+            # Try to reconnect blocked connection (up to 3 attempts)
             try: conn.connect()
             except Exception: pass
         return conn
@@ -66,6 +70,7 @@ def get_olt_connection(host: str, port: int = 23,
         pool.append(conn)
         return conn
 
+    # Pool full - return first connection even if blocked (will raise error)
     return pool[0]
 
 
@@ -124,6 +129,27 @@ class OltConnection:
             try: self._sock.close()
             except: pass
         self._sock = None
+
+        # Quick telnet port check before full handshake
+        try:
+            test_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            test_sock.settimeout(3)
+            result = test_sock.connect_ex((self.host, self.port))
+            test_sock.close()
+            if result != 0:
+                # Port not reachable - set circuit breaker immediately
+                self._skip_disconnect = True
+                raise ConnectionError(f"Telnet port not reachable (error {result})")
+        except (socket.error, socket.timeout) as check_err:
+            logger.warning(f"Telnet check failed for {self.host}:{self.port}: {check_err}")
+            # System resource exhausted - can't create more sockets
+            self._skip_disconnect = True
+            raise OSError(f"Cannot create socket: {check_err}")
+
+        # Wait before retry to let system release resources
+        if self._connect_attempts > 1:
+            time.sleep(2)
+
         try:
             self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self._sock.settimeout(self.timeout)
@@ -226,17 +252,11 @@ class OltConnection:
                 raise OSError("Socket not initialized")
             self._sock.sendall(text.encode("utf-8"))
         except (ConnectionResetError, BrokenPipeError, OSError) as e:
-            logger.warning(f"Write failed ({e}), reconnecting...")
+            logger.warning(f"Write failed ({e})")
             self._connected = False
             self._sock = None
-            try:
-                self.connect()
-                if self._sock is None:
-                    raise OSError("Reconnect failed - socket still None")
-                self._sock.sendall(text.encode("utf-8"))
-            except Exception as reconnect_err:
-                self._skip_disconnect = True  # Open circuit breaker
-                raise reconnect_err
+            self._skip_disconnect = True  # Open circuit breaker - no more reconnects
+            raise e  # Re-raise the original error without wrapping
 
     def _read_to_prompt(self, seconds=2):
         buf = b""
@@ -275,21 +295,13 @@ class OltConnection:
             self._write(command + "\r")
             output = self._read_to_prompt(5)
         except (ConnectionResetError, BrokenPipeError, OSError) as e:
-            logger.warning(f"Command '{command}' failed ({e}), reconnecting...")
-            self._connected = False
-            self._sock = None
-            self.connect()
-            self._write(command + "\r")
-            output = self._read_to_prompt(5)
+            logger.warning(f"Command '{command}' failed ({e})")
+            raise
 
-        # Handle empty output - connection may be stale
+        # Handle empty output - connection may be stale (skip reconnect to avoid loop)
         if not output.strip():
-            logger.warning(f"Empty output for '{command}', reconnecting...")
-            self._connected = False
-            self._sock = None
-            self.connect()
-            self._write(command + "\r")
-            output = self._read_to_prompt(5)
+            logger.warning(f"Empty output for '{command}'")
+            raise ConnectionError(f"Empty response from OLT for command: {command}")
 
         if MORE_PROMPT in output:
             if max_more == -1:
