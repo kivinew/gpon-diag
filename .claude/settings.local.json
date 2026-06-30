@@ -21,5 +21,10 @@
       "Bash(git add *)",
       "PowerShell(Get-Process *)"
     ]
-  }
+  },
+  "enabledMcpjsonServers": [
+    "gpon-huawei"
+  ],
+  "outputStyle": "default",
+  "enableAllProjectMcpServers": true
 }

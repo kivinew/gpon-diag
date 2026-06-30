@@ -196,7 +196,7 @@ def run_diagnosis(input_data, olt_config, thresholds, allow_actions=True, log=No
             f"Set env GPON_OLT_<OLT_NAME>_USERNAME/PASSWORD or use .env file."
         )
 
-    olt = get_olt_connection(host, port, username, password, 30, use_ssh=use_ssh)
+    olt = get_olt_connection(host, port, username, password, 30)
     _log(f"Подключение к головной станции {host}...")
     olt.connect()
     # Wait for connection to stabilize after login - OLT may need time to accept commands

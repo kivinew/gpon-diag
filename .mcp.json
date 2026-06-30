@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "gpon-huawei": {
+      "command": "uv",
+      "args": ["run", "python", "mcp_server.py"],
+      "env": {
+        "PYTHONPATH": "E:/DOWNLOADS/CREATIVE/PYTHON/GitHub/gpon-diag"
+      }
+    }
+  }
+}

@@ -224,3 +224,44 @@ report:
 ## Лицензия
 
 Private
+
+## MCP Server (Model Context Protocol)
+
+MCP сервер для интеграции с AI-агентами (Claude, Cursor и др.).
+
+### Инструменты
+
+| Инструмент | Описание | Параметры |
+|------------|----------|-----------|
+| `gpon_connect` | Подключение к OLT | host, username, password, session_name |
+| `gpon_diagnose` | Полная диагностика ONT | ont, session_name, allow_actions, ping_target |
+| `gpon_clear_errors` | Сброс счётчиков ошибок | address, session_name |
+| `gpon_reset_lan_port` | Перезагрузка LAN-порта | address, lan_id, session_name |
+| `gpon_get_optics` | Оптические параметры ONT | address, session_name |
+
+### Запуск
+
+```bash
+# С stdio (для интеграции с MCP-клиентом)
+uv run python mcp_server.py
+
+# Или добавить в mcp.json конфигурацию клиента:
+{
+  "mcpServers": {
+    "gpon-huawei": {
+      "command": "uv",
+      "args": ["run", "python", "mcp_server.py"],
+      "cwd": "/path/to/gpon-diag"
+    }
+  }
+}
+```
+
+### Пример сессии
+
+```
+1. gpon_connect(session_name="olt1", host="172.16.17.232", username="admin", password="***")
+2. gpon_diagnose(ont="0/1/3/9", session_name="olt1")
+3. gpon_get_optics(address="0/1/3/9", session_name="olt1")
+4. gpon_clear_errors(address="0/1/3/9", session_name="olt1")
+```

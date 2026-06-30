@@ -283,10 +283,14 @@ def api_search():
 
         try:
             olt = get_olt_connection(host, port, username, password, 15)
-            if olt._skip_disconnect:
-                logger.warning(f"Skipping blocked OLT {host} in search")
+            if olt._skip_disconnect or olt._sock is None:
+                logger.warning(f"Skipping unavailable OLT {host} in search")
                 continue  # Try next OLT
-            olt.connect()
+            try:
+                olt.connect()
+            except Exception as conn_err:
+                logger.warning(f"Connect failed to {host}: {conn_err}")
+                continue  # Try next OLT
             # Wait for connection to stabilize after login
             time.sleep(1)
 
