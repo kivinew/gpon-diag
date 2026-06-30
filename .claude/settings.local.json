@@ -19,12 +19,13 @@
       "Bash(browser-act *)",
       "Bash(git rm *)",
       "Bash(git add *)",
-      "PowerShell(Get-Process *)"
+      "PowerShell(Get-Process *)",
+      "Skill(fewer-permission-prompts)"
     ]
   },
+  "enableAllProjectMcpServers": true,
   "enabledMcpjsonServers": [
     "gpon-huawei"
   ],
-  "outputStyle": "default",
-  "enableAllProjectMcpServers": true
+  "outputStyle": "default"
 }

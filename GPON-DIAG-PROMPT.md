@@ -2,9 +2,8 @@
 
 Ты работаешь с проектом **gpon-diag** — фреймворком автоматизированной диагностики GPON-сети на базе Huawei MA5608T.
 
-**Расположение:** `/mnt/e/DOWNLOADS/CREATIVE/PYTHON/GitHub/gpon-diag/`
+**Расположение:** `E:/DOWNLOADS/CREATIVE/PYTHON/GitHub/gpon-diag/`
 **Python:** 3.12+, менеджер `uv`
-**Виртуальное окружение:** `/home/kivinew/gpon-diag-venv/` (WSL-native, опционально)
 **Транспорт:** синхронный socket TCP (telnet) с IAC stripping
 
 ---
@@ -21,11 +20,11 @@
 
 ```
 diagnose.py          ← CLI entry (argparse), оркестрация вызовов
-config.yaml          ← 22 OLT + пороги + настройки
+config.yaml          ← список OLT + пороги + настройки
 core/olt.py          ← Менеджер telnet-подключений (socket, circuit breaker)
-core/parser.py       ← Парсинг вывода Huawei CLI → OntMetrics (20+ regex)
-core/models.py       ← OntMetrics, LanPort, MacDevice (dataclass)
-core/engine.py       ← Rule-based движок (21 правило: 13 default + 8 extended)
+core/parser.py       ← Парсинг вывода Huawei CLI → OntMetrics (57 regex)
+core/models.py       ← OntMetrics, LanPort, MacDevice, OntSummary (dataclass)
+core/engine.py       ← Rule-based движок (20 правил: 12 default + 8 extended)
 core/thresholds.py   ← Пороговые значения (dataclass)
 core/report.py       ← DiagnosisProblem, DiagnosisReport → to_text()/to_dict()
 core/reporter.py     ← Сохранение отчётов (text/JSON) с файловой блокировкой
@@ -50,6 +49,7 @@ AGENTS.md            ← Контракт для мультиагентной р
 | Соединение | `core/olt.py` | Добавлять методы. Не менять `_read_to_prompt`, `send_command`, `_gpon_ctx` |
 | Отчёт | `core/report.py`, `core/reporter.py` | Расширять `to_text()` / `to_dict()`. Не удалять секции. |
 | Веб | `web/app.py`, `web/templates/*` | Свободная зона, не ломать импорты из `core.*` |
+| Оркестрация | `orchestrator/*.py`, `core/loop_runner.py` | Настройка очередей, агентов, контроля |
 | CLI | `diagnose.py` | Добавлять аргументы. Не менять `run_diagnosis()` |
 
 ---
@@ -108,7 +108,7 @@ sock → read banner → send username → read → send password → read → s
 
 ## 5. Парсер (core/parser.py)
 
-20+ паттернов в словаре `PATTERNS`. Ключевые:
+30+ паттернов в словаре `PATTERNS`. Ключевые:
 
 | Паттерн | Что парсит |
 |---------|------------|
@@ -129,6 +129,12 @@ sock → read banner → send username → read → send password → read → s
 | `lan_ports` | `1 1 GE 100 full up` |
 | `mac_entry` | `1 1234-ABCD-5678` |
 | `register_downtime` | `DownTime: 2026-06-01 12:00:00+07` |
+| `ip_output` | `IP address: 192.168.1.1` |
+| `cpu_temp` / `cpu_usage` | `CPU temperature: 45`, `CPU utilization: 25` |
+| `memory_usage` | `Memory utilization: 60` |
+| `register_status` / `register_age` | `Status: registered`, `Age(s): 86400` |
+| `eth_fcs`, `eth_received_bad_bytes`, `eth_sent_bad_bytes` | статистика ошибок LAN портов |
+| `gem_index`, `gem_vlan` | GEM index и mapping VLAN |
 
 **Правила парсинга:**
 - `strip_ansi()` — удалить ANSI escape-последовательности перед парсингом
@@ -157,13 +163,20 @@ sock → read banner → send username → read → send password → read → s
 | `laser_bias_current` | `-1` | int |
 | `last_down_cause`, `online_duration` | `""` | str |
 
+Дополнительные поля:
+- `ont_uptime`, `olt_version` — информация о головной станции
+- `eth_port_count`, `gem_vlans` — конфигурация GEM
+- `wan_connections` — список WAN-соединений  
+- `register_down_count`, `register_falls_24h`, `register_falls_7d` — статистика регистрации
+- `ping_status`, `ping_target`, `ping_result` — результаты ping
+
 **ВАЖНО:** Проверять sentinel-ы через `>= 900`, `< 0`, `<= -900`, `not val or val == "-"`. НЕ через `if not metrics.xxx` (0 — валидное значение для distance_m=0).
 
 ---
 
 ## 7. Движок диагностики (core/engine.py)
 
-### 21 правило (13 default + 8 extended):
+### 19 правил (11 default + 8 extended):
 
 ```
 DEFAULT_RULES:
@@ -178,14 +191,29 @@ DEFAULT_RULES:
   ont_temperature → ont_temperature > 65°C (warn) / > 75°C (crit)
   long_distance  → distance > 19km (warn) / > 20km (crit)
   config_state   → config_state != normal
-  wan_disconnected → WAN status = disconnected/failed
-  lan_no_link    → все LAN down
-  high_cpu       → cpu > 90%
-  high_memory    → mem > 85%
-  no_description → description = ONT_NO_DESCRIPTION
-  frequent_falls → 2+ falls за 1 час
-  eth_port_errors → FCS/RX bad/TX bad > 0
-  long_uptime    → online > 5 days
+
+EXTENDED_RULES (дополнительно к DEFAULT_RULES):
+  wan_disconnected → WAN статус disconnected/failed
+  lan_no_link      → все LAN порты down
+  high_cpu         → cpu > 90%
+  high_memory      → mem > 85%
+  no_description   → description = ONT_NO_DESCRIPTION
+  frequent_falls   → 2+ падения за 1 час
+  eth_port_errors  → FCS/RX bad/TX bad > 0
+  long_uptime      → online > 5 дней
+```
+DEFAULT_RULES:
+  offline        → offline, dying-gasp, LOS, wire-down, LOKI
+  low_ont_rx     → Rx < warn/crit
+  low_olt_rx     → OLT Rx < warn/crit
+  low_tx_power   → Tx < 0 dBm (crit) / < 1 dBm (warn)
+  bip_errors     → BIP > 10K (warn) / > 100K (crit)
+  bad_firmware   → version в bad_versions[]
+  no_lan         → нет active LAN ports
+  overheating    → cpu_temp > 75°C (warn) / > 90°C (crit)
+  ont_temperature → ont_temperature > 65°C (warn) / > 75°C (crit)
+  long_distance  → distance > 19km (warn) / > 20km (crit)
+  config_state   → config_state != normal
 ```
 
 ### Правила для правил:
