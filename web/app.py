@@ -19,7 +19,7 @@ from sqlalchemy import text
 
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from diagnose import load_config, find_available_olt, parse_input, run_diagnosis, _load_olt_credentials, sanitize_ont_param
+from diagnose import load_config, find_available_olt, parse_input, run_diagnosis, _load_olt_credentials, sanitize_ont_param, _build_thresholds
 from core.olt import OntNotFoundError, get_olt_connection, close_all
 from core.thresholds import Thresholds
 from core.parser import parse_ont_info, parse_optical_info, parse_line_quality

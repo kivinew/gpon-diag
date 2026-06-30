@@ -91,6 +91,7 @@ def _strip_iac(data):
     i = 0
     while i < len(data):
         if data[i] == 255 and i + 2 < len(data):
+            # IAC sequence: 255 (IAC) + command (253/254/251/252) + option
             i += 3
         else:
             result += bytes([data[i]])
@@ -159,21 +160,48 @@ class OltConnection:
             self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             self._sock.settimeout(self.timeout)
             self._sock.connect((self.host, self.port))
-            # Accept telnet negotiations
-            self._sock.sendall(b"\xff\xfb\x01\xff\xfb\x03")
-            # Read banner and login prompts, cache banner for model detection
-            banner = self._read_to_prompt(2)
+            
+            # Read initial banner (may contain telnet IAC sequences)
+            self._sock.setblocking(False)
+            banner_data = b""
+            deadline = time.time() + 3
+            while time.time() < deadline:
+                try:
+                    chunk = self._sock.recv(4096)
+                    if chunk:
+                        banner_data += chunk
+                except BlockingIOError:
+                    break
+            self._sock.setblocking(True)
+            
+            # Handle IAC negotiations
+            banner_data = self._strip_iac(banner_data)
+            banner = banner_data.decode("utf-8", errors="ignore")
+            logger.debug(f"Banner received: {banner[:200] if banner else 'empty'}")
             OltConnection._banner_cache = banner
-            self._write(self.username + "\r")
-            time.sleep(1)
-            self._read_to_prompt(2)
-            self._write(self.password + "\r")
-            time.sleep(2)
-            # Enter enable mode and config mode
-            self._write("enable\r")
-            self._read_to_prompt(2)
-            self._write("config\r")
-            self._read_to_prompt(2)
+            
+            # Send username
+            self._sock.sendall((self.username + "\r").encode("utf-8"))
+            time.sleep(1.5)
+            self._read_until_prompt(2)
+            
+            # Send password
+            self._sock.sendall((self.password + "\r").encode("utf-8"))
+            time.sleep(2.5)
+            self._read_until_prompt(3)
+            
+            # Check if we're already in enable mode or need to enter config
+            # Huawei OLT typically shows prompt like "MA5608T>" or "MA5608T#"
+            # Try to detect if we need enable/config
+            self._sock.sendall(b"enable\r")
+            time.sleep(0.5)
+            resp = self._read_until_prompt(1)
+            
+            # Enter config mode for OLT commands (required for most diagnostic commands)
+            self._sock.sendall(b"config\r")
+            time.sleep(0.5)
+            self._read_until_prompt(2)
+            
             self._drain_socket()
             # Stabilize connection - OLT may need time after config mode
             time.sleep(0.5)
@@ -192,6 +220,30 @@ class OltConnection:
             if self._connect_attempts >= 2:
                 self._skip_disconnect = True
             raise
+
+    def _read_until_prompt(self, seconds=2, skip_login=False):
+        """Read data until a prompt is detected or timeout."""
+        buf = b""
+        deadline = time.time() + seconds
+        last_line = ""
+        while time.time() < deadline:
+            try:
+                chunk = self._sock.recv(4096)
+                if not chunk:
+                    break
+                # Strip IAC sequences
+                chunk = self._strip_iac(chunk)
+                buf += chunk
+                text = buf.decode("utf-8", errors="ignore")
+                lines = text.rstrip().split("\n")
+                if lines:
+                    last_line = lines[-1].strip()
+                    # Check for common Huawei OLT prompts: MA5608T>, MA5608T#, MA5608T (Config)#
+                    if re.match(r'^\S+[>#]', last_line) or re.search(r'\}\s*:\s*$', last_line):
+                        break
+            except (socket.timeout, BlockingIOError):
+                pass
+        return buf.decode("utf-8", errors="ignore")
 
     def get_olt_info(self) -> dict:
         """Get OLT model, uptime, and software version.
@@ -268,8 +320,10 @@ class OltConnection:
             raise e  # Re-raise the original error without wrapping
 
     def _read_to_prompt(self, seconds=2):
+        """Read data until a prompt is detected or timeout."""
         buf = b""
         deadline = time.time() + seconds
+        last_line = ""
         while time.time() < deadline:
             ready = select.select([self._sock], [], [], 0.5)
             if ready[0]:
@@ -277,13 +331,14 @@ class OltConnection:
                     chunk = self._sock.recv(8192)
                     if chunk:
                         buf += _strip_iac(chunk)
+                        text = buf.decode("utf-8", errors="ignore")
+                        lines = text.rstrip().split("\n")
+                        if lines:
+                            last_line = lines[-1].strip()
+                            # Check for common Huawei OLT prompts: MA5608T>, MA5608T#, MA5608T (Config)#
+                            if re.match(r'^\S+[>#]', last_line) or re.search(r'\}\s*:\s*$', last_line):
+                                break
                 except (socket.timeout, ConnectionResetError, BrokenPipeError, OSError):
-                    break
-            text = buf.decode("utf-8", errors="ignore")
-            lines = text.rstrip().split("\n")
-            if lines:
-                last = lines[-1].strip()
-                if re.match(r'^\S+(?:\([^\n]+\))?[>#:]\s*$', last) or re.search(r'\}\s*:\s*$', last):
                     break
         return buf.decode("utf-8", errors="ignore")
 

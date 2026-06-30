@@ -133,17 +133,18 @@ def rule_long_distance(metrics, t):
     if metrics.distance_m < 0:
         return None
     if metrics.distance_m >= t.distance_crit:
-        return DiagnosisProblem("warning", "optic", f"Критическое расстояние: {metrics.distance_m} м (предел 20000 м)", "Проверить оптический бюджет")
-    return None
-
-
-def rule_match_state(metrics, t):
+        return DiagnosisProblem("warning", "optic",
+            f"Критическое расстояние: {metrics.distance_m} м (предел {t.distance_crit} м)",
+            "Проверить оптический бюджет линии, превышение максимальной дистанции")
+    if metrics.distance_m >= t.distance_warn:
+        return DiagnosisProblem("info", "optic",
+            f"Большое расстояние: {metrics.distance_m} м (порог {t.distance_warn} м)",
+            "Обратить внимание на оптический бюджет линии")
     return None
 
 
 def rule_config_state(metrics, t):
-    if not metrics.is_online:
-        return None
+    """Check config state — works for both online and offline ONTs."""
     if not metrics.config_state:
         return None
     if metrics.config_state.lower() != "normal":
@@ -168,37 +169,8 @@ def rule_low_tx_power(metrics, t):
     return None
 
 
-def rule_high_temperature(metrics, t):
-    """Check temperature from optical-info (more precise than CPU temp)."""
-    if not metrics.is_online or metrics.ont_temperature <= -900:
-        return None
-    if metrics.ont_temperature >= 75:
-        return DiagnosisProblem("critical", "hardware",
-            f"Критическая температура: {metrics.ont_temperature}°C",
-            "Перегрев терминала — проверить вентиляцию, условия размещения")
-    if metrics.ont_temperature >= 65:
-        return DiagnosisProblem("warning", "hardware",
-            f"Повышенная температура: {metrics.ont_temperature}°C",
-            "Рекомендуется проверить условия размещения терминала")
-    return None
-
-
-def rule_low_voltage(metrics, t):
-    """Check supply voltage — below 3.0V is critical."""
-    if not metrics.is_online or metrics.supply_voltage < 0 or metrics.supply_voltage >= 900:
-        return None
-    if metrics.supply_voltage < 3.0:
-        return DiagnosisProblem("critical", "hardware",
-            f"Низкое напряжение питания: {metrics.supply_voltage}V (норма 3.0-3.6V)",
-            "Проблема с БП или кабелем питания — проверить источник")
-    if metrics.supply_voltage > 3.6:
-        return DiagnosisProblem("warning", "hardware",
-            f"Высокое напряжение питания: {metrics.supply_voltage}V (норма 3.0-3.6V)",
-            "Превышение напряжения — проверить БП")
-    return None
-
 # --------------------------------------------------------
-# New rule: temperature check (ONT optical temperature)
+# Temperature check (ONT optical temperature) via Thresholds
 def rule_ont_temperature(metrics, t):
     """Check ONT temperature from optical‑info.
     Uses thresholds ont_temperature_warn / ont_temperature_crit.
@@ -229,12 +201,10 @@ DEFAULT_RULES = [
     Rule("bad_firmware", rule_bad_firmware, "firmware"),
     Rule("no_lan", rule_no_lan, "ethernet"),
     Rule("overheating", rule_overheating, "hardware"),
-    Rule("high_temperature", rule_high_temperature, "hardware"),
     # Rule("low_voltage", rule_low_voltage, "hardware"),  # duplicate removed
 
     Rule("ont_temperature", rule_ont_temperature, "hardware"),
     Rule("long_distance", rule_long_distance, "optic"),
-    Rule("match_state", rule_match_state, "config"),
     Rule("config_state", rule_config_state, "config"),
 ]
 

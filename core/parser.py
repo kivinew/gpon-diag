@@ -142,8 +142,11 @@ def parse_optical_info(raw: str, m: OntMetrics) -> None:
     m.ont_rx_power = _search_float(raw, PATTERNS["ont_rx_power"])
     m.olt_rx_power = _search_float(raw, PATTERNS["olt_rx_power"])
     m.ont_tx_power = _search_float(raw, PATTERNS["ont_tx_power"])
-    m.laser_bias_current = _search_int(raw, PATTERNS["laser_bias"])
-    m.ont_temperature = _search_int(raw, PATTERNS["ont_temperature"])
+    # Use _search directly to preserve sentinel defaults (-1, -999)
+    laser = _search(raw, PATTERNS["laser_bias"])
+    m.laser_bias_current = int(laser) if laser and laser != "-" else -1
+    ont_temp = _search(raw, PATTERNS["ont_temperature"])
+    m.ont_temperature = int(ont_temp) if ont_temp and ont_temp != "-" else -999
     m.supply_voltage = _search_float(raw, PATTERNS["supply_voltage"])
     m.module_subtype = _search(raw, PATTERNS["module_subtype"]) or ""
     m.vendor_pn = _search(raw, PATTERNS["vendor_pn"]) or ""
