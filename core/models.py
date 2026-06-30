@@ -105,6 +105,8 @@ class OntSummary:
     distance: int = -1
     last_down_cause: str = ""
     description: str = ""
+    match_state: str = ""
+    config_state: str = ""
     collected_at: str = field(default_factory=lambda: datetime.now().isoformat())
 
     @property

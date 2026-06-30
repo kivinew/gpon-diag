@@ -1,0 +1,47 @@
+[
+  {
+    "ont_id": "13",
+    "address": "0/0/2/13",
+    "status": "",
+    "match_state": "",
+    "config_state": "initial",
+    "distance_m": -1,
+    "description": "fl_78856",
+    "serial": "48575443876B349D",
+    "rx_power": 999.0,
+    "tx_power": 999.0,
+    "olt_name": "г.Топки",
+    "olt_host": "172.16.54.61",
+    "collected_at": "2026-06-30T19:02:01.285878+07:00"
+  },
+  {
+    "ont_id": "7",
+    "address": "0/1/15/7",
+    "status": "",
+    "match_state": "",
+    "config_state": "",
+    "distance_m": -1,
+    "description": "ONT_NO_DESCRIPTION",
+    "serial": "",
+    "rx_power": 999.0,
+    "tx_power": 999.0,
+    "olt_name": "г.Юрга, пос.Зимник, пос.Сарсаз",
+    "olt_host": "172.16.17.188",
+    "collected_at": "2026-06-30T04:08:44.745617+07:00"
+  },
+  {
+    "ont_id": "7",
+    "address": "0/1/15/7",
+    "status": "online",
+    "match_state": "mismatch",
+    "config_state": "normal",
+    "distance_m": 8542,
+    "description": "fl_103881",
+    "serial": "48575443A5D4D39D",
+    "rx_power": -24.2,
+    "tx_power": 1.93,
+    "olt_name": "г.Юрга, пос.Зимник, пос.Сарсаз",
+    "olt_host": "172.16.17.188",
+    "collected_at": "2026-06-30T03:50:54.521785+07:00"
+  }
+]

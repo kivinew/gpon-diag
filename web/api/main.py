@@ -12,7 +12,7 @@ import os
 from web.api.deps import get_config, get_db, get_olt_pool, lifespan_init, lifespan_shutdown
 from web.api.exceptions import register_exception_handlers
 from web.api.routes import (
-    diagnose, optics, search, actions, history, port_summary, olts, health
+    diagnose, optics, search, actions, history, port_summary, olts, health, ws
 )
 
 logger = logging.getLogger(__name__)
@@ -71,6 +71,8 @@ def create_app() -> FastAPI:
     app.include_router(history.router, prefix="/api", tags=["history"])
     app.include_router(port_summary.router, prefix="/api", tags=["port-summary"])
     app.include_router(olts.router, prefix="/api", tags=["olts"])
+    # WebSocket routes (no /api prefix)
+    app.include_router(ws.router, tags=["websocket"])
 
     # Static files (built React SPA) — served in production
     static_dir = os.path.join(os.path.dirname(__file__), "..", "static")

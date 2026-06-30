@@ -334,8 +334,8 @@ def parse_ont_info_summary(raw: str) -> list:
             try:
                 ont_id = parts[0].strip()
                 status = parts[1].strip()
-                # config_state = parts[2].strip()  # not used
-                # match_state = parts[3].strip()   # not used
+                config_state = parts[2].strip()
+                match_state = parts[3].strip()
                 distance_str = parts[4].strip()
                 description = parts[5].strip() if len(parts) > 5 else ""
 
@@ -345,6 +345,8 @@ def parse_ont_info_summary(raw: str) -> list:
                 results.append(OntSummary(
                     ont_id=ont_id,
                     status=status,
+                    match_state=match_state,
+                    config_state=config_state,
                     rx_power=999.0,
                     tx_power=999.0,
                     distance=distance,

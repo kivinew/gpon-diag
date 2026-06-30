@@ -31,8 +31,9 @@ core/reporter.py     ← Сохранение отчётов (text/JSON) с фа
 core/collector.py    ← Re-export OltConnection (legacy, не трогать)
 core/adapter.py      ← Адаптер SecureCRT ↔ core (legacy, не трогать)
 core/crt_stub.py     ← Эмуляция SecureCRT API (legacy, не трогать — используется GPON_class.py)
-core/loop_runner.py  ← Циклический запуск диагностики
+core/loop_runner.py  ← Циклическое выполнение диагностики
 web/app.py           ← Flask + SSE (real-time логи, SQLite)
+mcp_server.py        ← MCP сервер для AI-интеграции (5 tools: gpon_connect, gpon_diagnose, gpon_clear_errors, gpon_reset_lan_port, gpon_get_optics)
 orchestrator/        ← Модуль оркестрации AI-агентов
 tests/test_smoke.py  ← Smoke-тесты (без OLT)
 hermes-lockutils/    ← Файловая блокировка (atomic mkdir)
@@ -73,6 +74,7 @@ AGENTS.md            ← Контракт для мультиагентной р
    - display statistics ont-eth F S P ID ont-port 1..4
    - display mac-address ont F/S/P ID
    - display ont wan-info F S P ID
+   - display ont register-info F S P ID (for both online/offline)
    - ping 1.1.1.1 (с ONT, не для модели 310)
 5. Парсинг → OntMetrics
 6. engine.diagnose() → список DiagnosisProblem
@@ -108,7 +110,7 @@ sock → read banner → send username → read → send password → read → s
 
 ## 5. Парсер (core/parser.py)
 
-30+ паттернов в словаре `PATTERNS`. Ключевые:
+57 паттернов в словаре `PATTERNS`. Ключевые:
 
 | Паттерн | Что парсит |
 |---------|------------|
@@ -176,7 +178,7 @@ sock → read banner → send username → read → send password → read → s
 
 ## 7. Движок диагностики (core/engine.py)
 
-### 19 правил (11 default + 8 extended):
+### 20 правил (11 default + 8 extended)
 
 ```
 DEFAULT_RULES:
@@ -201,19 +203,6 @@ EXTENDED_RULES (дополнительно к DEFAULT_RULES):
   frequent_falls   → 2+ падения за 1 час
   eth_port_errors  → FCS/RX bad/TX bad > 0
   long_uptime      → online > 5 дней
-```
-DEFAULT_RULES:
-  offline        → offline, dying-gasp, LOS, wire-down, LOKI
-  low_ont_rx     → Rx < warn/crit
-  low_olt_rx     → OLT Rx < warn/crit
-  low_tx_power   → Tx < 0 dBm (crit) / < 1 dBm (warn)
-  bip_errors     → BIP > 10K (warn) / > 100K (crit)
-  bad_firmware   → version в bad_versions[]
-  no_lan         → нет active LAN ports
-  overheating    → cpu_temp > 75°C (warn) / > 90°C (crit)
-  ont_temperature → ont_temperature > 65°C (warn) / > 75°C (crit)
-  long_distance  → distance > 19km (warn) / > 20km (crit)
-  config_state   → config_state != normal
 ```
 
 ### Правила для правил:
@@ -251,7 +240,8 @@ positional:  input (F/S/P/ONT, SN, или description)
 --no-save   не сохранять файл отчёта
 --no-actions  без сброса ошибок и перезагрузки портов (безопасный режим)
 --only-optics  только оптика (Rx/Tx, BIP), без LAN/WAN
---clipboard   копировать в буфер обмена
+--ssh       использовать SSH вместо telnet
+--config    путь к config.yaml (по умолчанию config.yaml)
 ```
 
 ### Команды:
@@ -283,37 +273,70 @@ uv run python -m tests.test_smoke
 ### config.yaml
 ```yaml
 olts:
-  - name: "пос.Пионер"
-    host: "172.16.37.252"
-    port: 23
-    credential_key: "RADIUS"
+  # 23 OLT configured with credential_key: "RADIUS"
 
 thresholds:
-  ont_rx_power_warn: -26.5
-  ont_rx_power_crit: -30.0
-  bip_error_warn: 10000
-  bip_error_crit: 100000
-  # ... полный список в core/thresholds.py
+  ont_rx_power_warn_dbm: -26.0     # ONT input signal low
+  ont_rx_power_crit_dbm: -27.0     # ONT input signal critical
+  olt_rx_power_warn_dbm: -32.0     # OLT reverse signal low
+  olt_rx_power_crit_dbm: -33.0     # OLT reverse signal critical
+  bip_error_warn: 10000            # BIP errors warning
+  bip_error_crit: 100000           # BIP errors critical
+  cpu_temp_warn_c: 75              # CPU temperature warning
+  cpu_temp_crit_c: 90              # CPU temperature critical
+  cpu_usage_warn_pct: 90           # CPU usage warning
+  memory_usage_warn_pct: 85        # Memory usage warning
+  ont_temperature_warn_c: 65       # ONT temperature warning
+  ont_temperature_crit_c: 75       # ONT temperature critical
+  distance_warn_m: 19000           # Distance warning (long line)
+  distance_crit_m: 20000           # Distance critical
 
-bad_versions:
+bad_versions:                       # известные плохие версии ПО
   - "V1R003C00S108"
   - "V1R006C00S130"
+  - "V1R006C00S205"
+  - "V1R006C00S201"
+  - "V1R006C01S201"
 
-no_ping_models:
+no_ping_models:                     # модели без ping
   - "310"
+
+ping_target: "1.1.1.1"            # цель для remote ping
+
+report:
+  save_to_file: true
+  reports_dir: "data/reports"
 ```
 
 ### .env (креды — НЕ КОММИТИТЬ)
 ```
 GPON_OLT_RADIUS_USERNAME=admin
 GPON_OLT_RADIUS_PASSWORD=password
+# или по имени OLT: GPON_OLT_ПИОНЕР_USERNAME/PASSWORD
 ```
 
 Загрузка: python-dotenv → `os.environ`. Формат ключа: `GPON_OLT_<CREDENTIAL_KEY>_USERNAME` / `_PASSWORD`.
 
 ---
 
-## 11. Жёсткие правила (НЕ НАРУШАТЬ)
+## 11. Модуль оркестрации (orchestrator/)
+
+Асинхронный контроль выполнения задач AI-агентами:
+- `agent_registry.py` — реестр агентов и их статусов
+- `task_card.py` — карточки задач с проверкой
+- `lock_manager.py` — управление блокировками файлов
+- `outer_loop.py` — внешний цикл оркестрации
+- `external_control.py` — внешний контроль задач
+
+### LoopRunner (core/loop_runner.py)
+Циклическое выполнение диагностики для пакетной обработки:
+- `TaskQueue` — очередь задач с персистентностью в JSON
+- `LoopTask` — атомарная задача (diagnose, batch_diagnose, generate_rules)
+- Поддержка CSV/text файлов со списком ONT
+
+---
+
+## 12. Жёсткие правила (НЕ НАРУШАТЬ)
 
 1. **Не удалять код из `crt_stub.py`** — используется `GPON_class.py` через `inject_crt()`
 2. **Не менять порядок `DEFAULT_RULES` / `EXTENDED_RULES`** — влияет на результат диагностики
@@ -328,7 +351,7 @@ GPON_OLT_RADIUS_PASSWORD=password
 
 ---
 
-## 12. Типичные ошибки и pitfalls
+## 13. Типичные ошибки и pitfalls
 
 | Ошибка | Как избежать |
 |--------|-------------|
@@ -337,11 +360,10 @@ GPON_OLT_RADIUS_PASSWORD=password
 | Забыл `interface gpon` перед optical-info | Использовать `_gpon_ctx()` / `_quit_gpon()` |
 | Broken pipe / reconnect loop | В `_write` при ошибке — `logger.warning`, не `logger.error`, проверять `_connected` |
 | Поиск ONT находит только 1-ю страницу | `max_more=-1` во всех `find_ont_by_*` |
-| .venv на /mnt/e ломается под WSL | Создавать venv в `/home/` (WSL-native FS) |
 
 ---
 
-## 13. Полезные ссылки
+## 14. Полезные ссылки
 
 - **AGENTS.md** — мультиагентный контракт (зоны, процедуры, координация)
 - **core/engine.py** — правила диагностики
