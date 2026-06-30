@@ -22,6 +22,8 @@ uv run diagnose.py 0/1/3/9 --json         # JSON output
 uv run diagnose.py 0/1/3/9 --no-save     # Skip saving report
 uv run diagnose.py 0/1/3/9 --no-actions  # Diagnostics without resets/clears
 uv run diagnose.py 0/1/3/9 --only-optics # Only check optics (powers + BIP)
+uv run diagnose.py 0/1/3/9 --auto-search # Search all OLTs in parallel
+# Note: output is automatically copied to clipboard if pyperclip is installed
 
 # Run loop runner for batch diagnosis
 uv run loop_run.py --file onts.txt --olt "OLT-17.232" --loops 50
@@ -72,7 +74,7 @@ orchestrator/task_card.py      → Task management
 
 ## Key Design Decisions
 
-1. **Synchronous sockets in `olt.py`** — Uses `select` and raw sockets for telnet control.
+1. **Synchronous sockets in `olt.py`** — Uses `select` and raw sockets for telnet control (not telnetlib3).
 
 2. **Rule-based engine** — Each rule is a `(metrics, thresholds) -> DiagnosisProblem|None` function.
 
@@ -177,14 +179,19 @@ report:
 
 ## Credentials Setup
 
-Never store passwords in files. Use environment variables:
+Three-tier credential resolution in order:
+1. `credential_key` from `config.yaml` → `GPON_OLT_<KEY>_USERNAME/PASSWORD` (e.g., `GPON_OLT_RADIUS_USERNAME`)
+2. Sanitized OLT name → `GPON_OLT_<OLT_NAME>_USERNAME/PASSWORD`
+3. Sanitized host IP → `GPON_OLT_<HOST>_USERNAME/PASSWORD`
+
+Environment variables (non-alphanumeric characters in OLT name become underscores):
 
 ```powershell
-# For OLT named "OLT-17.232" (non-alphanumeric → underscore)
+# For OLT named "OLT-17.232"
 $env:GPON_OLT_17_232_USERNAME="admin"
 $env:GPON_OLT_17_232_PASSWORD="your_password"
 
-# Or use .env file (auto-loaded):
+# Or use .env file (auto-loaded by python-dotenv):
 GPON_OLT_RADIUS_USERNAME=admin
 GPON_OLT_RADIUS_PASSWORD=your_password
 ```
@@ -219,13 +226,65 @@ uv run python scripts/check_and_start_server.py
 - ✅ `.gitignore` excludes secrets and reports
 - ⚠️ Telnet is unencrypted — use management VLAN
 
+## Modifying Core Components (Hard Rules)
+
+Certain files have strict modification rules that must be preserved:
+
+| Component | Constraint |
+|-----------|------------|
+| `core/models.py` → `OntMetrics` | Adding fields only via `field(default=…)` at end. No deletions/renames without updating all consumers. |
+| `core/engine.py` → `DEFAULT_RULES`, `EXTENDED_RULES` | Rule order affects results. New rules only append to `EXTENDED_RULES`. No reordering or deletion. |
+| `core/olt.py` → `_olt_registry`, `_read_to_prompt`, `send_command` | Connection pool logic (max 2 connections per OLT). Changes break telnet protocol. |
+| `core/parser.py` → `PATTERNS` | Regexes parse live Huawei CLI output. Any change must be tested against real output. |
+| `diagnose.py` → `run_diagnosis()` | Parser call order and diagnostic actions (error clear, ping) are part of the protocol. |
+| `.env`, `config.yaml` | Secrets and deploy config. Do not extend `.gitignore` for files needed by other agents. |
+
+### Rule Engine Conventions
+
+- Offline ONT: only `rule_offline` + `rule_match_state`/`rule_config_state` run
+- All other rules guard with `if not metrics.is_online: return None`
+- Rule signature: `def rule_*(metrics: OntMetrics, t: Thresholds) -> DiagnosisProblem | list | None`
+- After adding a rule, run `uv run python -m tests.test_smoke`
+- Diagnostic messages in **Russian**; code/comments in **English**
+
+### Huawei Telnet Protocol
+
+- `display ont optical-info` requires `interface gpon F/S` context → `_gpon_ctx()` / `_quit_gpon()`
+- Long output pagination (`---- More ----`) handled via `send_command(max_more=…)`
+- Distance uses `ONT distance(m)`, fallback to `ONT last distance(m)` when value is `-`
+- Optical params from `display ont optical-info` only: `ont_rx_power`, `olt_rx_power`, `ont_tx_power`, `laser_bias_current`, `ont_temperature`, `supply_voltage`, `module_subtype`
+
+## File Locking
+
+`hermes-lockutils/` is a local directory (not a pip package). Two import patterns used in codebase:
+
+```python
+# Option A: via sys.path (scripts/)
+import sys
+sys.path.append("hermes-lockutils")
+from file_lock import lock_file, unlock_file
+
+# Option B: via importlib (core/reporter.py, orchestrator/lock_manager.py)
+import importlib.util
+_spec = importlib.util.spec_from_file_location("file_lock", "hermes-lockutils/file_lock.py")
+```
+
+All concurrent writes to `data/reports/` MUST use these locks. Do NOT implement custom locking.
+
+## Production Server Management
+
+- Dev: `uv run python -m web.app` (Flask, port 5000)
+- Production: `uv run python scripts/check_and_start_server.py` (Waitress, port 5000, file-lock managed)
+- `watchdog.py` monitors port 5000 and restarts if down (poll every 30s)
+- `open-browser.ps1` manages persistent browser-act sessions
+
 ## Dependencies
 
 - Python 3.12+
 - pyyaml — configuration
 - python-dotenv — environment variables
-- telnetlib3 — telnet client (async)
-- Flask + Flask-SQLAlchemy — web interface
+- telnetlib3 — telnet client (listed in pyproject.toml but core/olt.py uses raw sockets)
+- Flask + Flask-SQLAlchemy — web interface and SQLite history
 - pyperclip — clipboard copy
 - waitress — production WSGI server
 

@@ -30,12 +30,12 @@ def get_olt_connection(host: str, port: int = 23,
     """
     key = f"{host}:{port}"
 
-    # Skip blocked connections - create fresh when circuit breaker is open
+    # Skip broken connections - create fresh when socket is None or blocked
     if key in _olt_registry and pool_index is None:
         pool = _olt_registry[key]
-        # Check if all connections in pool are blocked
-        all_blocked = all(conn._skip_disconnect for conn in pool) if pool else False
-        if all_blocked:
+        # Check if all connections in pool are broken (no socket or blocked)
+        all_broken = all((conn._sock is None or conn._skip_disconnect) for conn in pool) if pool else False
+        if all_broken:
             # Clear pool and start fresh connection
             for conn in pool:
                 try: conn.disconnect()
@@ -55,10 +55,13 @@ def get_olt_connection(host: str, port: int = 23,
         while len(pool) <= pool_index:
             pool.append(OltConnection(host, port, username, password, timeout))
         conn = pool[pool_index]
-        if conn._skip_disconnect and conn._connect_attempts < 3:
-            # Try to reconnect blocked connection (up to 3 attempts)
-            try: conn.connect()
-            except Exception: pass
+        if conn._sock is None or conn._skip_disconnect:
+            # Connection is broken - reset attempts and try once
+            conn._connect_attempts = max(0, conn._connect_attempts - 1)
+            try:
+                conn.connect()
+            except Exception:
+                pass  # Will raise proper error when used
         return conn
 
     for conn in pool:
@@ -127,6 +130,7 @@ class OltConnection:
             wait_time = min(30, self._connect_attempts * 3)  # Max 30 seconds
             logger.info(f"Waiting {wait_time}s before retry to {self.host}...")
             time.sleep(wait_time)
+            self._connect_attempts = 0  # Reset for the retry
 
         self._connect_attempts += 1
         # Reset socket state before attempting new connection
@@ -152,6 +156,7 @@ class OltConnection:
 
         try:
             self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             self._sock.settimeout(self.timeout)
             self._sock.connect((self.host, self.port))
             # Accept telnet negotiations
@@ -292,14 +297,17 @@ class OltConnection:
         self._last_used = time.time()
 
         # Check if socket is valid
-        if self._sock is None or not self._connected:
+        if self._sock is None:
+            logger.error(f"Socket is None when trying to send command '{command}'")
             self._connected = False
+            raise OSError("Socket not initialized - connect() failed")
 
         try:
             self._write(command + "\r")
             output = self._read_to_prompt(5)
         except (ConnectionResetError, BrokenPipeError, OSError) as e:
             logger.warning(f"Command '{command}' failed ({e})")
+            self._connected = False
             raise
 
         # Handle empty output - connection may be stale (skip reconnect to avoid loop)
