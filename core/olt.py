@@ -123,6 +123,11 @@ class OltConnection:
             self.disconnect()
 
     def connect(self):
+        if self._connect_attempts > 0:  # Already had failed attempts
+            wait_time = min(30, self._connect_attempts * 3)  # Max 30 seconds
+            logger.info(f"Waiting {wait_time}s before retry to {self.host}...")
+            time.sleep(wait_time)
+
         self._connect_attempts += 1
         # Reset socket state before attempting new connection
         if self._sock:
@@ -133,7 +138,7 @@ class OltConnection:
         # Quick telnet port check before full handshake
         try:
             test_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            test_sock.settimeout(3)
+            test_sock.settimeout(2)
             result = test_sock.connect_ex((self.host, self.port))
             test_sock.close()
             if result != 0:
@@ -142,13 +147,8 @@ class OltConnection:
                 raise ConnectionError(f"Telnet port not reachable (error {result})")
         except (socket.error, socket.timeout) as check_err:
             logger.warning(f"Telnet check failed for {self.host}:{self.port}: {check_err}")
-            # System resource exhausted - can't create more sockets
             self._skip_disconnect = True
             raise OSError(f"Cannot create socket: {check_err}")
-
-        # Wait before retry to let system release resources
-        if self._connect_attempts > 1:
-            time.sleep(2)
 
         try:
             self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -230,12 +230,16 @@ class OltConnection:
         if self._sock:
             try:
                 self._sock.sendall(b"quit\r")
-                time.sleep(0.3)
+                time.sleep(0.1)
             except Exception:
                 pass
-            self._sock.close()
+            try:
+                self._sock.close()
+            except Exception:
+                pass
             self._sock = None
         self._connected = False
+        self._connect_attempts = 0  # Reset for next time
 
     def __enter__(self):
         self.connect()

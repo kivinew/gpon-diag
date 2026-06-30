@@ -1039,21 +1039,8 @@ function attachHistoryRowHandlers() {
     // Initialization
     // ============================================================
     async function init() {
-        // Check server is running
-        try {
-            const pingResp = await fetch('/ping', { timeout: 3000 });
-            if (!pingResp.ok) throw new Error('Server not responding');
-        } catch (e) {
-            console.error('Server health check failed:', e);
-            // Wait and retry once
-            await new Promise(r => setTimeout(r, 2000));
-        }
-
-        // Reset UI state - clear any stale selections
-        state.selectedOnt = null;
-        state.portSummaries = [];
-        state.eventSource = null;
-        state.portMonitorReader = null;
+        // Reset ALL OLT connections on page load to avoid stale sessions
+        await fetch('/api/reset-connections', { method: 'POST', cache: 'no-cache' }).catch(() => {});
 
         // Load initial history
         await loadHistory();
@@ -1073,10 +1060,11 @@ function attachHistoryRowHandlers() {
                 state.currentOlt = savedOlt;
                 els.currentOlt.textContent = `OLT: ${savedOlt}`;
             }
-            els.searchForm.dispatchEvent(new Event('submit'));
+            // Trigger search after UI reset
+            setTimeout(() => {
+                els.searchForm.dispatchEvent(new Event('submit'));
+            }, 100);
         }
-        // Disable diagnosis button until ONT is selected
-        els.runDiagBtn.disabled = true;
     }
 
     // Start when DOM ready
