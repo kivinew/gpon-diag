@@ -307,9 +307,19 @@ def run_diagnosis(input_data, olt_config, thresholds, allow_actions=True, log=No
 def find_available_olt(config):
     for olt_config in config.get("olts", []):
         host = olt_config["host"]
+        port = olt_config.get("port", 23)
         username, password = _load_olt_credentials(olt_config)
         if not username or not password:
             continue
+
+        # Check if OLT already has blocked connections in pool (check BEFORE ping)
+        key = f"{host}:{port}"
+        if key in _olt_registry:
+            pool = _olt_registry[key]
+            all_blocked = all(conn._skip_disconnect for conn in pool) if pool else False
+            if all_blocked:
+                continue  # Skip this OLT, it's blocked
+
         # Check reachability via ping (Windows: check for "TTL=" in output for success)
         try:
             import subprocess
@@ -322,13 +332,6 @@ def find_available_olt(config):
                 continue
         except (subprocess.TimeoutExpired, FileNotFoundError, Exception):
             continue
-        # Also check if OLT already has blocked connections in pool
-        key = f"{host}:23"
-        if key in _olt_registry:
-            pool = _olt_registry[key]
-            all_blocked = all(conn._skip_disconnect for conn in pool) if pool else False
-            if all_blocked:
-                continue  # Skip this OLT, it's blocked
         return olt_config
     return None
 

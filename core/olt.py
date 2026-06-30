@@ -108,6 +108,7 @@ class OltConnection:
         self._last_used: float = 0.0
         self._max_idle_seconds: int = 120
         self._skip_disconnect: bool = False  # If True, don't reconnect to preserve sessions
+        self._connect_attempts: int = 0  # Track failed connection attempts
 
     def _check_idle_timeout(self):
         """Auto-disconnect if idle too long (prevents session exhaustion)."""
@@ -117,12 +118,12 @@ class OltConnection:
             self.disconnect()
 
     def connect(self):
-        # Reset socket and circuit breaker state before attempting new connection
+        self._connect_attempts += 1
+        # Reset socket state before attempting new connection
         if self._sock:
             try: self._sock.close()
             except: pass
         self._sock = None
-        self._skip_disconnect = False  # Reset circuit breaker for fresh connection attempt
         try:
             self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self._sock.settimeout(self.timeout)
@@ -146,6 +147,7 @@ class OltConnection:
             # Stabilize connection - OLT may need time after config mode
             time.sleep(0.5)
             self._connected = True
+            self._connect_attempts = 0  # Reset on success
         except Exception as e:
             logger.error(f"Failed to connect to {self.host}:{self.port}: {e}")
             if self._sock:
@@ -153,6 +155,11 @@ class OltConnection:
                     self._sock.close()
                 except Exception:
                     pass
+            self._sock = None
+            self._connected = False
+            # Only set circuit breaker after 2 failed attempts to allow retries
+            if self._connect_attempts >= 2:
+                self._skip_disconnect = True
             raise
 
     def get_olt_info(self) -> dict:

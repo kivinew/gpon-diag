@@ -226,6 +226,9 @@
             is_online: item.is_online
         };
 
+        // Enable diagnosis button
+        els.runDiagBtn.disabled = false;
+
         // Update detail panel title
         els.detailTitle.textContent = `${item.olt_name} — ONT ${item.ont_address}`;
         showDetail();
@@ -233,6 +236,11 @@
         // Fetch optics and history
         fetchOptics(state.selectedOnt);
         loadHistoryForOnt(item.ont_address);
+
+        // Auto-start diagnosis on first search result (if enabled)
+        if (state.searchResults.length === 1 || localStorage.getItem('autoDiagnose') === 'true') {
+            runDiagnosis(state.selectedOnt);
+        }
     }
 
     // ============================================================
@@ -1031,6 +1039,22 @@ function attachHistoryRowHandlers() {
     // Initialization
     // ============================================================
     async function init() {
+        // Check server is running
+        try {
+            const pingResp = await fetch('/ping', { timeout: 3000 });
+            if (!pingResp.ok) throw new Error('Server not responding');
+        } catch (e) {
+            console.error('Server health check failed:', e);
+            // Wait and retry once
+            await new Promise(r => setTimeout(r, 2000));
+        }
+
+        // Reset UI state - clear any stale selections
+        state.selectedOnt = null;
+        state.portSummaries = [];
+        state.eventSource = null;
+        state.portMonitorReader = null;
+
         // Load initial history
         await loadHistory();
 
@@ -1051,6 +1075,8 @@ function attachHistoryRowHandlers() {
             }
             els.searchForm.dispatchEvent(new Event('submit'));
         }
+        // Disable diagnosis button until ONT is selected
+        els.runDiagBtn.disabled = true;
     }
 
     // Start when DOM ready
