@@ -1,5 +1,7 @@
 """Threshold evaluation — business logic for checking thresholds, separate from data models."""
 
+from typing import Optional
+
 from core.constants import DEFAULT_THRESHOLDS
 from core.thresholds import Thresholds
 

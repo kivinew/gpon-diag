@@ -178,7 +178,7 @@ Description             : fl_102693
 def test_parse_input_types():
     """Test parse_input for serial, address and description recognition."""
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    from diagnose import parse_input
+    from core.utils import parse_input
 
     # Serial format
     result = parse_input("4857544312E0E379")

@@ -1,223 +1,154 @@
-"""OLT connection manager — synchronous socket-based for Huawei MA5608T."""
+"""OLT Connection — main interface combining connection pool, telnet session, and data collector."""
 
 import logging
 import re
-import select
-import socket
 import time
-import threading
 from typing import Dict, Optional
+
+from core.connection_pool import get_olt_connection as _get_olt_connection, close_all as _close_all
+from core.telnet_session import TelnetSession
+from core.data_collector import OntDataCollector
+from core.constants import (
+    DEFAULT_CONNECT_TIMEOUT,
+    DEFAULT_COMMAND_TIMEOUT,
+    IDLE_TIMEOUT,
+    MAX_CONNECTIONS_PER_OLT,
+)
 
 logger = logging.getLogger(__name__)
 
-MORE_PROMPT = "---- More ( Press 'Q' to break ) ----"
+# Re-export for backward compatibility
+OntNotFoundError = OntDataCollector.OntNotFoundError if hasattr(OntDataCollector, 'OntNotFoundError') else Exception
 
-_olt_registry: Dict[str, list] = {}  # List of connections per OLT (pool of 2)
-_MAX_CONNECTIONS_PER_OLT = 2
-_pool_lock = threading.Lock()  # Lock for thread-safe pool access
-
-
+# Keep the same exception class name for backward compat
 class OntNotFoundError(Exception):
     pass
 
 
-def get_olt_connection(host: str, port: int = 23,
-                       username: str = "", password: str = "",
-                       timeout: int = 15,
-                       pool_index: Optional[int] = None) -> 'OltConnection':
-    """Get or create connection from pool (max 2 per OLT)."""
-    key = f"{host}:{port}"
-
-    with _pool_lock:
-        if key not in _olt_registry:
-            _olt_registry[key] = []
-
-        pool = _olt_registry[key]
-
-        if pool_index is not None:
-            while len(pool) <= pool_index:
-                pool.append(OltConnection(host, port, username, password, timeout))
-            return pool[pool_index]
-
-        # Find available connection
-        for conn in pool:
-            if conn._connected and conn._sock is not None:
-                return conn
-
-        # Create new connection if pool not full
-        if len(pool) < _MAX_CONNECTIONS_PER_OLT:
-            conn = OltConnection(host, port, username, password, timeout)
-            pool.append(conn)
-            return conn
-
-        # Pool full - return first connection
-        return pool[0]
-
-
-def close_all():
-    """Close all OLT connections in the pool."""
-    for pool in _olt_registry.values():
-        for conn in pool:
-            conn.disconnect()
-    _olt_registry.clear()
-
-
-def _strip_iac(data):
-    """Remove telnet IAC sequences from data."""
-    result = b""
-    i = 0
-    while i < len(data):
-        if data[i] == 255 and i + 2 < len(data):
-            i += 3
-        else:
-            result += bytes([data[i]])
-            i += 1
-    return result
-
-
 class OltConnection:
-    """Manages a single telnet connection to one OLT using synchronous sockets."""
+    """
+    Main OLT connection class — combines connection pooling, telnet session,
+    and data collection. Maintains backward compatibility with existing code.
+    """
 
     _banner_cache = ""  # Class-level cache for model info
 
     def __init__(self, host: str = "", port: int = 23,
                  username: str = "", password: str = "",
                  timeout: int = 15):
+        # Create internal telnet session
+        self._session = TelnetSession(host, port, username, password, timeout)
+        # Create data collector using the session
+        self._collector = OntDataCollector(self._session)
+
+        # Expose common attributes for backward compatibility
         self.host = host
         self.port = port
         self.username = username
         self.password = password
         self.timeout = timeout
-        self._sock: Optional[socket.socket] = None
-        self._connected = False
-        self._last_used: float = 0.0
-        self._max_idle_seconds: int = 120
-        self._skip_disconnect: bool = False  # If True, don't reconnect to preserve sessions
-        self._connect_attempts: int = 0  # Track failed connection attempts
 
+        # Delegated properties
+        self._sock = None
+        self._connected = False
+        self._last_used = 0.0
+        self._max_idle_seconds = IDLE_TIMEOUT
+        self._skip_disconnect = False
+        self._connect_attempts = 0
+
+    # Property delegation to session
+    @property
+    def _sock(self):
+        return self._session._sock
+
+    @_sock.setter
+    def _sock(self, value):
+        self._session._sock = value
+
+    @property
+    def _connected(self):
+        return self._session._connected
+
+    @_connected.setter
+    def _connected(self, value):
+        self._session._connected = value
+
+    @property
+    def _last_used(self):
+        return self._session._last_used
+
+    @_last_used.setter
+    def _last_used(self, value):
+        self._session._last_used = value
+
+    @property
+    def _max_idle_seconds(self):
+        return self._session._max_idle_seconds
+
+    @_max_idle_seconds.setter
+    def _max_idle_seconds(self, value):
+        self._session._max_idle_seconds = value
+
+    @property
+    def _skip_disconnect(self):
+        return self._session._skip_disconnect
+
+    @_skip_disconnect.setter
+    def _skip_disconnect(self, value):
+        self._session._skip_disconnect = value
+
+    @property
+    def _connect_attempts(self):
+        return self._session._connect_attempts
+
+    @_connect_attempts.setter
+    def _connect_attempts(self, value):
+        self._session._connect_attempts = value
+
+    @property
+    def _banner(self):
+        return self._session._banner
+
+    @_banner.setter
+    def _banner(self, value):
+        self._session._banner = value
+        # Also update class-level cache
+        OltConnection._banner_cache = value
+
+    # Method delegation
     def _check_idle_timeout(self):
-        """Auto-disconnect if idle too long (prevents session exhaustion)."""
-        now = time.time()
-        if self._connected and (now - self._last_used) > self._max_idle_seconds:
-            logger.info(f"Auto-disconnecting idle connection to {self.host}")
-            if self._sock:
-                try: self._sock.close()
-                except: pass
-                self._sock = None
-            self._connected = False
+        return self._session._check_idle_timeout()
 
     def connect(self):
-        if self._connect_attempts > 0:  # Already had failed attempts
-            wait_time = min(30, self._connect_attempts * 3)  # Max 30 seconds
-            logger.info(f"Waiting {wait_time}s before retry to {self.host}...")
-            time.sleep(wait_time)
-
-        self._connect_attempts += 1
-        # Reset socket state before attempting new connection
-        if self._sock:
-            try: self._sock.close()
-            except: pass
-        self._sock = None
-
-        # Quick telnet port check before full handshake
-        try:
-            test_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            test_sock.settimeout(2)
-            result = test_sock.connect_ex((self.host, self.port))
-            test_sock.close()
-            if result != 0:
-                # Port not reachable - set circuit breaker immediately
-                self._skip_disconnect = True
-                raise ConnectionError(f"Telnet port not reachable (error {result})")
-        except (socket.error, socket.timeout) as check_err:
-            logger.warning(f"Telnet check failed for {self.host}:{self.port}: {check_err}")
-            self._skip_disconnect = True
-            raise OSError(f"Cannot create socket: {check_err}")
-
-        try:
-            self._sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            self._sock.settimeout(self.timeout)
-            self._sock.connect((self.host, self.port))
-            # Accept telnet negotiations
-            self._sock.sendall(b"\xff\xfb\x01\xff\xfb\x03")
-            # Read banner and login prompts, cache banner for model detection
-            banner = self._read_to_prompt(2)
-            OltConnection._banner_cache = banner
-            
-            # Send username and wait for password prompt
-            self._write(self.username + "\r")
-            time.sleep(1.5)
-            resp = self._read_to_prompt(3)
-            
-            # Send password
-            self._write(self.password + "\r")
-            time.sleep(2)
-            resp = self._read_to_prompt(4)
-            
-            # Wait for command prompt (>)
-            time.sleep(1)
-            self._read_to_prompt(3)
-            
-            # Enter enable mode
-            self._write("enable\r")
-            time.sleep(1.5)
-            self._read_to_prompt(3)
-            
-            # Enter config mode
-            self._write("config\r")
-            time.sleep(1.5)
-            self._read_to_prompt(3)
-            
-            self._drain_socket()
-            time.sleep(0.5)
-            self._connected = True
-            self._skip_disconnect = False
-            self._connect_attempts = 0
-            self._last_used = time.time()
-        except Exception as e:
-            logger.error(f"Failed to connect to {self.host}:{self.port}: {e}")
-            if self._sock:
-                try:
-                    self._sock.close()
-                except Exception:
-                    pass
-            self._sock = None
-            self._connected = False
-            raise
+        self._session.connect()
+        # Update banner cache
+        OltConnection._banner_cache = self._session._banner
 
     def get_olt_info(self) -> dict:
-        """Get OLT model, uptime, and software version.
-        The method extracts the model from the cached banner and, if possible,
-        queries the OLT for version and uptime using the appropriate CLI commands.
-        """
+        """Get OLT model, uptime, and software version."""
         model = uptime = version = ""
-        # --------- Model extraction from banner ---------
+        # Model extraction from banner
         try:
             banner = OltConnection._banner_cache
-            # Typical banner contains: "Huawei Integrated Access Software (MA5608T)"
             model_match = re.search(r"\bMA(\d{4})T?\b", banner, re.I)
             if model_match:
                 model = f"MA{model_match.group(1)}"
         except Exception:
             logger.debug("Failed to parse model from banner", exc_info=True)
-        # --------- Version extraction ---------
+        # Version extraction
         try:
-            version_output = self.send_command("display version", max_more=0)
-            # Look for a line like: "Software Version : V200R019C00"
+            version_output = self._session.send_command("display version", max_more=0)
             version_match = re.search(r"VERSION\s*[:]\s*([^\s]+)", version_output, re.I)
             if version_match:
                 version = version_match.group(1).strip()
         except Exception:
             logger.debug("Failed to retrieve OLT version", exc_info=True)
-        # --------- Uptime extraction ---------
+        # Uptime extraction
         try:
-            uptime_output = self.send_command("display uptime", max_more=0)
-            # Typical format: "Uptime is 5 days, 3 hours, 12 minutes"
+            uptime_output = self._session.send_command("display uptime", max_more=0)
             uptime_match = re.search(r"Uptime\s+is\s+([\w ,()]+)", uptime_output, re.I)
             if uptime_match:
                 raw_uptime = uptime_match.group(1).strip()
-                # Extract only the days component (e.g., "1957 day(s)")
                 days_match = re.search(r"(\d+)\s*day", raw_uptime, re.I)
                 uptime = f"{days_match.group(1)} day(s)" if days_match else raw_uptime
         except Exception:
@@ -225,19 +156,7 @@ class OltConnection:
         return {"model": model, "uptime": uptime, "version": version}
 
     def disconnect(self):
-        if self._sock:
-            try:
-                self._sock.sendall(b"quit\r")
-                time.sleep(0.1)
-            except Exception:
-                pass
-            try:
-                self._sock.close()
-            except Exception:
-                pass
-            self._sock = None
-        self._connected = False
-        self._connect_attempts = 0  # Reset for next time
+        self._session.disconnect()
 
     def __enter__(self):
         self.connect()
@@ -247,291 +166,62 @@ class OltConnection:
         self.disconnect()
 
     def _write(self, text):
-        if self._skip_disconnect:
-            raise ConnectionError(f"Connection to {self.host} is blocked")
-        try:
-            if self._sock is None:
-                raise OSError("Socket not initialized")
-            self._sock.sendall(text.encode("utf-8"))
-        except (ConnectionResetError, BrokenPipeError, OSError) as e:
-            logger.warning(f"Write failed ({e})")
-            self._connected = False
-            self._skip_disconnect = True
-            raise
+        return self._session._write(text)
 
     def _read_to_prompt(self, seconds=2):
-        buf = b""
-        deadline = time.time() + seconds
-        while time.time() < deadline:
-            ready = select.select([self._sock], [], [], 0.5)
-            if ready[0]:
-                try:
-                    chunk = self._sock.recv(8192)
-                    if chunk:
-                        buf += _strip_iac(chunk)
-                except (socket.timeout, ConnectionResetError, BrokenPipeError, OSError):
-                    break
-            text = buf.decode("utf-8", errors="ignore")
-            lines = text.rstrip().split("\n")
-            if lines:
-                last = lines[-1].strip()
-                if re.match(r'^\S+(?:\([^\n]+\))?[>#:]\s*$', last) or re.search(r'\}\s*:\s*$', last):
-                    break
-        return buf.decode("utf-8", errors="ignore")
+        return self._session._read_to_prompt(seconds)
 
     def send_command(self, command, max_more=0):
-        """Send command and get output."""
-        if self._skip_disconnect:
-            raise ConnectionError(f"Connection blocked")
-
-        self._check_idle_timeout()
-        self._last_used = time.time()
-
-        if self._sock is None or not self._connected:
-            self._connected = False
-            raise OSError("Socket not initialized")
-
-        try:
-            self._write(command + "\r")
-            output = self._read_to_prompt(5)
-        except (ConnectionResetError, BrokenPipeError, OSError) as e:
-            logger.warning(f"Command '{command}' failed ({e})")
-            raise
-
-        # Handle empty output - connection may be stale (skip reconnect to avoid loop)
-        if not output.strip():
-            logger.warning(f"Empty output for '{command}'")
-            raise ConnectionError(f"Empty response from OLT for command: {command}")
-
-        if MORE_PROMPT in output:
-            if max_more == -1:
-                while True:
-                    self._write(" \r")
-                    time.sleep(0.3)
-                    chunk = self._read_to_prompt(2)
-                    output += chunk
-                    if MORE_PROMPT not in chunk:
-                        break
-            else:
-                self._write("q\r")
-                time.sleep(0.3)
-                output += self._read_to_prompt(2)
-
-        if re.search(r'\}\s*:\s*$', output.rstrip()):
-            self._write("\r")
-            time.sleep(0.5)
-            output += self._read_to_prompt(5)
-
-        return output
+        return self._session.send_command(command, max_more)
 
     def _gpon_ctx(self, frame, slot):
-        self._drain_socket()
-        self._write(f"interface gpon {frame}/{slot}\r")
-        time.sleep(1)
-        self._read_to_prompt(3)
+        self._session._gpon_ctx(frame, slot)
 
     def _quit_gpon(self):
-        self._write("quit\r")
-        time.sleep(1)
-        self._read_to_prompt(2)
+        self._session._quit_gpon()
 
     def _drain_socket(self):
-        try:
-            while True:
-                ready = select.select([self._sock], [], [], 0.3)
-                if ready[0]:
-                    self._sock.recv(8192)
-                else:
-                    break
-        except Exception:
-            pass
+        self._session._drain_socket()
 
+    # Data collection methods delegate to collector
     def collect_ont(self, frame, slot, port, ont_id, log=None):
-        """Collect ONT data with parameter validation."""
-        _log = log or (lambda msg, end=" ", flush=True: print(msg, end=end, flush=flush))
-        self._drain_socket()
-
-        for param_name, param_value in [("frame", frame), ("slot", slot),
-                                       ("port", port), ("ont_id", ont_id)]:
-            if not re.fullmatch(r'\d+', param_value):
-                raise ValueError(f"Invalid {param_name}: {param_value}")
-
-        results = {}
-
-        _log("  ont info...")
-        results["ont_info"] = self.send_command(
-            f"display ont info {frame} {slot} {port} {ont_id}", max_more=0
-        )
-        _log("OK")
-
-        if "The required ONT does not exist" in results["ont_info"]:
-            raise OntNotFoundError(f"ONT {frame}/{slot}/{port}/{ont_id} not found on OLT")
-
-        status_match = re.search(r"Run state\s*: *(.+)", results["ont_info"])
-        is_online = status_match and "online" in status_match.group(1).lower()
-        if not is_online:
-            _log("  ONT offline, skipping other commands")
-            _log("  register-info...")
-            results["register_info"] = self.send_command(
-                f"display ont register-info {frame} {slot} {port} {ont_id}", max_more=-1
-            )
-            _log("OK")
-            return results
-
-        _log("  ont version...")
-        results["ont_version"] = self.send_command(
-            f"display ont version {frame} {slot} {port} {ont_id}", max_more=0
-        )
-        _log("OK")
-
-        _log("  optical-info...")
-        self._gpon_ctx(frame, slot)
-        results["optical_info"] = self.send_command(
-            f"display ont optical-info {port} {ont_id}", max_more=-1
-        )
-        self._quit_gpon()
-        _log("OK")
-
-        _log("  line-quality...")
-        results["line_quality"] = self.send_command(
-            f"display statistics ont-line-quality {frame} {slot} {port} {ont_id}", max_more=0
-        )
-        _log("OK")
-
-        _log("  port state...")
-        results["lan_ports"] = self.send_command(
-            f"display ont port state {frame} {slot} {port} {ont_id} eth-port all", max_more=-1
-        )
-        _log("OK")
-
-        for lan_id in range(1, 5):
-            _log(f"  eth-errors {lan_id}...")
-            results[f"eth_errors_raw_{lan_id}"] = self.send_command(
-                f"display statistics ont-eth {frame} {slot} {port} {ont_id} ont-port {lan_id}", max_more=0
-            )
-            _log("OK")
-
-        _log("  mac-address...")
-        mac_raw = self.send_command(
-            f"display mac-address ont {frame}/{slot}/{port} {ont_id}", max_more=-1
-        )
-        results["mac_addresses"] = mac_raw
-        _log(f"OK ({mac_raw.count(chr(10))} lines)")
-
-        _log("  wan-info...")
-        results["wan_info"] = self.send_command(
-            f"display ont wan-info {frame} {slot} {port} {ont_id}", max_more=-1
-        )
-        _log("OK")
-
-        _log("  ipconfig...")
-        results["ipconfig"] = self.send_command(
-            f"display ont ipconfig {frame} {slot} {port} {ont_id}", max_more=0
-        )
-        _log("OK")
-
-        _log("  register-info...")
-        results["register_info"] = self.send_command(
-            f"display ont register-info {frame} {slot} {port} {ont_id}", max_more=-1
-        )
-        _log("OK")
-
-        return results
+        return self._collector.collect_ont(frame, slot, port, ont_id, log)
 
     def collect_port_summary(self, frame, slot, port, log=None):
-        """Collect 'display ont info summary' for all ONTs on a GPON port.
-        Returns list of OntSummary objects.
-        """
-        from core.parser import parse_ont_info_summary
-
-        _log = log or (lambda msg, end=" ", flush=True: print(msg, end=end, flush=flush))
-
-        for param_name, param_value in [("frame", frame), ("slot", slot), ("port", port)]:
-            if not re.fullmatch(r'\d+', param_value):
-                raise ValueError(f"Invalid {param_name}: {param_value}")
-
-        self._drain_socket()
-
-        _log("  port summary...")
-        output = self.send_command(
-            f"display ont info summary {frame} {slot} {port}", max_more=-1
-        )
-        _log("OK")
-
-        summaries = parse_ont_info_summary(output)
-        _log(f"  parsed {len(summaries)} ONTs")
-        return summaries
+        return self._collector.collect_port_summary(frame, slot, port, log)
 
     def clear_line_quality(self, frame, slot, port, ont_id):
-        self._gpon_ctx(frame, slot)
-        self.send_command(f"clear statistics ont-line-quality {port} {ont_id}", max_more=0)
-        self._quit_gpon()
+        self._collector.clear_line_quality(frame, slot, port, ont_id)
 
     def reset_lan_port(self, frame, slot, port, ont_id, lan_id):
-        self._gpon_ctx(frame, slot)
-        self.send_command(f"ont port attribute {port} {ont_id} eth {lan_id} operational-state off", max_more=0)
-        time.sleep(0.5)
-        self.send_command(f"ont port attribute {port} {ont_id} eth {lan_id} operational-state on", max_more=0)
-        self._quit_gpon()
+        self._collector.reset_lan_port(frame, slot, port, ont_id, lan_id)
 
     def clear_eth_errors(self, frame, slot, port, ont_id, lan_id):
-        self._gpon_ctx(frame, slot)
-        self.send_command(f"clear statistics ont-eth {port} {ont_id} ont-port {lan_id}", max_more=0)
-        self._quit_gpon()
+        self._collector.clear_eth_errors(frame, slot, port, ont_id, lan_id)
 
     def remote_ping(self, frame, slot, port, ont_id, ip="1.1.1.1"):
-        self._gpon_ctx(frame, slot)
-        self._write(f"ont remote-ping {port} {ont_id} ip-address {ip}\r")
-        time.sleep(8)
-        output = self._read_to_prompt(5)
-        self._quit_gpon()
-        return output
+        return self._collector.remote_ping(frame, slot, port, ont_id, ip)
 
     def find_ont_by_sn(self, serial):
-        output = self.send_command(f"display ont info by-sn {serial}", max_more=-1)
-        return self._parse_fsp(output)
+        return self._collector.find_ont_by_sn(serial)
 
     def find_ont_by_description(self, description):
-        value = description
-        if description.isdigit() and 5 <= len(description) <= 16:
-            value = f"fl_{description}"
-        output = self.send_command(f"display ont info by-desc {value}", max_more=-1)
-        result = self._parse_fsp(output)
-        if not result:
-            time.sleep(1)
-            output = self.send_command(f"display ont info by-desc {value}", max_more=-1)
-            result = self._parse_fsp(output)
-        return result
+        return self._collector.find_ont_by_description(description)
 
     @staticmethod
     def _parse_fsp(output):
-        # Huawei MA5600 table format:
-        #   F/S/P   ONT-ID   Description
-        #   0/ 0/6       0   fl_102693
-        # Key-value format (across multiple lines):
-        #   F/S/P                   : 0/1/3
-        #   ONT-ID                  : 9
-        #   Description             : fl_102693
-        lines = output.strip().split('\n')
-        fsp_val = oid_val = None
-        for line in lines:
-            # Reset on empty line separator between ONT records
-            if not line.strip():
-                fsp_val = oid_val = None
-                continue
-            # Table format: "0/ 0/6 0 fl_102693" — single-line F/S/P + ONT-ID
-            m = re.search(r'(\d+)\s*/\s*(\d+)\s*/\s*(\d+)\s+(\d+)', line)
-            if m:
-                return {"frame": m.group(1), "slot": m.group(2), "port": m.group(3), "ont_id": m.group(4)}
-            # Collect key-value pairs across lines
-            fsp_m = re.search(r"F/S/P\s*:\s*([\d/]+)", line)
-            oid_m = re.search(r"ONT-ID\s*:\s*(\d+)", line)
-            if fsp_m:
-                fsp_val = fsp_m.group(1)
-            if oid_m:
-                oid_val = oid_m.group(1)
-            if fsp_val and oid_val:
-                parts = fsp_val.split("/")
-                if len(parts) == 3:
-                    return {"frame": parts[0], "slot": parts[1], "port": parts[2], "ont_id": oid_val}
-        return None
+        return OntDataCollector._parse_fsp(output)
+
+
+# Module-level functions for backward compatibility
+def get_olt_connection(host: str, port: int = 23,
+                       username: str = "", password: str = "",
+                       timeout: int = 15,
+                       pool_index: Optional[int] = None) -> OltConnection:
+    """Get or create connection from pool (max 2 per OLT)."""
+    return _get_olt_connection(host, port, username, password, timeout, pool_index)
+
+
+def close_all():
+    """Close all OLT connections in the pool."""
+    _close_all()

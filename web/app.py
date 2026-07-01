@@ -23,7 +23,8 @@ from core.thresholds import Thresholds
 from core.parser import parse_ont_info, parse_optical_info, parse_line_quality
 from core.models import OntMetrics
 from core.config_parser import _build_thresholds, load_config
-from diagnose import run_diagnosis, find_available_olt
+from core.diagnose_logic import run_diagnosis
+from core.connection_diagnosis import find_available_olt
 
 app = Flask(__name__)
 app.debug = False
