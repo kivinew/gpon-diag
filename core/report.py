@@ -1,41 +1,13 @@
 """Diagnosis Problem and Report models."""
 
 import logging
-import os
-import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone, timedelta
 from core.models import OntMetrics
-
-TZ_LOCAL = timezone(timedelta(hours=7))
+from core.utils import get_mac_database, get_vendor
+from core.constants import TZ_LOCAL, BAD_VERSIONS
 
 logger = logging.getLogger(__name__)
-
-MAC_DB_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "oui.txt")
-
-
-def _load_mac_database():
-    mac_db = {}
-    if not os.path.exists(MAC_DB_PATH):
-        return mac_db
-    pattern = re.compile(
-        r"^([0-9A-Fa-f]{2}[-]?[0-9A-Fa-f]{2}[-]?[0-9A-Fa-f]{2})\s+\(hex\)\s+(.+)|"
-        r"^([0-9A-Fa-f]{6})\s+\(base 16\)\s+(.+)"
-    )
-    with open(MAC_DB_PATH, "r", encoding="utf-8") as f:
-        for line in f:
-            m = pattern.match(line.strip())
-            if not m:
-                continue
-            oui = (m.group(1) or m.group(3)).replace("-", "").upper()
-            vendor = (m.group(2) or m.group(4)).strip()
-            mac_db[oui] = vendor.split()[0]
-    return mac_db
-
-
-def _get_vendor(mac, mac_db):
-    clean = re.sub(r"[^A-Fa-f0-9]", "", mac).upper()
-    return mac_db.get(clean[:6], "n/a")
 
 
 class DiagnosisProblem:
@@ -173,7 +145,7 @@ class DiagnosisReport:
         lines.append("")
 
         if m.mac_devices:
-            mac_db = _load_mac_database()
+            mac_db = get_mac_database()
             lines.append("MAC-адреса устройств за ONT:")
             seen = set()
             for dev in m.mac_devices:
@@ -181,7 +153,7 @@ class DiagnosisReport:
                 if mac in seen:
                     continue
                 seen.add(mac)
-                vendor = _get_vendor(mac, mac_db)
+                vendor = get_vendor(mac, mac_db)
                 port_label = "LAN" if dev.port_type == "ETH" else dev.port_type
                 lines.append(f"{port_label}{dev.port_number} {mac} — {vendor}")
             lines.append("")
