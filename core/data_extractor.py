@@ -24,7 +24,9 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, TextIO
 
 logger = logging.getLogger(__name__)
-TZ_LOCAL = timezone(timedelta(hours=7))
+
+# Use centralized constants
+from core.constants import TZ_LOCAL
 
 # ──────────────────────────────────────────────
 # Data model
@@ -221,18 +223,17 @@ def extract_from_olt_port(
     """
     from core.olt import OltConnection
     from core.parser import parse_ont_info_summary
+    from core.utils import load_olt_credentials
 
     host = olt_config["host"]
     telnet_port = olt_config.get("port", 23)
 
-    # Load credentials from env
-    credential_key = olt_config.get("credential_key", "")
-    username = os.getenv(f"GPON_OLT_{credential_key}_USERNAME", "")
-    password = os.getenv(f"GPON_OLT_{credential_key}_PASSWORD", "")
+    # Load credentials from env using shared utility
+    username, password = load_olt_credentials(olt_config)
     if not username or not password:
         raise ValueError(
             f"Missing credentials for OLT '{olt_config.get('name', host)}'. "
-            f"Set GPON_OLT_{credential_key}_USERNAME/PASSWORD."
+            f"Set GPON_OLT_<KEY>_USERNAME/PASSWORD."
         )
 
     olt = OltConnection(host, telnet_port, username, password, connect_timeout)

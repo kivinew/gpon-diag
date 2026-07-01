@@ -25,6 +25,8 @@ from core.parser import (
 from core.engine import create_default_engine
 from core.thresholds import Thresholds
 from core.reporter import format_text
+from core.constants import DEFAULT_THRESHOLDS
+from core.utils import parse_input, sanitize_ont_param, load_olt_credentials
 
 
 def inject_crt(crt_obj):
@@ -32,14 +34,6 @@ def inject_crt(crt_obj):
     import core.collector as _c
     # Not needed for new architecture, but kept for compat
     pass
-
-
-def sanitize_ont_param(value: str) -> str:
-    """Validate ONT parameter contains only digits."""
-    import re
-    if not re.fullmatch(r'\d+', value):
-        raise ValueError(f"Invalid ONT parameter '{value}': must contain only digits")
-    return value
 
 
 def run_from_securecrt(crt):
@@ -60,31 +54,13 @@ def run_from_securecrt(crt):
         crt.Dialog.MessageBox("Буфер обмена пуст. Скопируйте F/S/P/ONT, SN или лицевой счёт.")
         return
 
-    # Parse input
-    import re
-    input_data = None
-
-    # Serial number
-    if re.fullmatch(r"(?i)(48575443|hwtc)[\da-f]{8}", buffer_text):
-        input_data = {"type": "serial", "value": buffer_text.upper()}
-    # F/S/P/ONT
-    else:
-        tokens = buffer_text.replace("/", " ").split()
-        if len(tokens) == 4 and all(t.isdigit() for t in tokens):
-            input_data = {
-                "type": "address",
-                "frame": tokens[0], "slot": tokens[1],
-                "port": tokens[2], "ont_id": tokens[3],
-            }
-        elif re.match(r"^(fl_|kes)?\d{5,16}$", buffer_text):
-            value = buffer_text
-            if buffer_text.isdigit():
-                value = f"fl_{buffer_text}"
-            input_data = {"type": "description", "value": value}
-
-    if not input_data:
+    # Parse input using shared utility
+    try:
+        input_data = parse_input(buffer_text)
+    except ValueError as e:
         crt.Dialog.MessageBox(
             f"Не удалось распознать: '{buffer_text}'\n"
+            f"Ошибка: {e}\n"
             "Ожидается: F/S/P/ONT, серийный номер или лицевой счёт"
         )
         return
@@ -92,50 +68,31 @@ def run_from_securecrt(crt):
     # Select OLT (first one for now)
     olt_config = config.get("olts", [{}])[0]
 
-    # Build thresholds
+    # Build thresholds from config with defaults from core.constants
     t = config.get("thresholds", {})
     thresholds = Thresholds(
-        ont_rx_power_warn=t.get("ont_rx_power_warn_dbm", -26.0),
-        ont_rx_power_crit=t.get("ont_rx_power_crit_dbm", -30.0),
-        olt_rx_power_warn=t.get("olt_rx_power_warn_dbm", -32.0),
-        olt_rx_power_crit=t.get("olt_rx_power_crit_dbm", -35.0),
-        bip_error_warn=t.get("bip_error_warn", 10000),
-        bip_error_crit=t.get("bip_error_crit", 100000),
-        cpu_temp_warn=t.get("cpu_temp_warn_c", 75),
-        cpu_temp_crit=t.get("cpu_temp_crit_c", 85),
-        cpu_usage_warn=t.get("cpu_usage_warn_pct", 80),
-        memory_usage_warn=t.get("memory_usage_warn_pct", 85),
-        distance_warn=t.get("distance_warn_m", 18000),
-        distance_crit=t.get("distance_crit_m", 20000),
-        bad_versions=t.get("bad_versions", []),
-        no_ping_models=t.get("no_ping_models", []),
+        ont_rx_power_warn=t.get("ont_rx_power_warn_dbm", DEFAULT_THRESHOLDS["ont_rx_power_warn"]),
+        ont_rx_power_crit=t.get("ont_rx_power_crit_dbm", DEFAULT_THRESHOLDS["ont_rx_power_crit"]),
+        olt_rx_power_warn=t.get("olt_rx_power_warn_dbm", DEFAULT_THRESHOLDS["olt_rx_power_warn"]),
+        olt_rx_power_crit=t.get("olt_rx_power_crit_dbm", DEFAULT_THRESHOLDS["olt_rx_power_crit"]),
+        bip_error_warn=t.get("bip_error_warn", DEFAULT_THRESHOLDS["bip_error_warn"]),
+        bip_error_crit=t.get("bip_error_crit", DEFAULT_THRESHOLDS["bip_error_crit"]),
+        cpu_temp_warn=t.get("cpu_temp_warn_c", DEFAULT_THRESHOLDS["cpu_temp_warn"]),
+        cpu_temp_crit=t.get("cpu_temp_crit_c", DEFAULT_THRESHOLDS["cpu_temp_crit"]),
+        cpu_usage_warn=t.get("cpu_usage_warn_pct", DEFAULT_THRESHOLDS["cpu_usage_warn"]),
+        memory_usage_warn=t.get("memory_usage_warn_pct", DEFAULT_THRESHOLDS["memory_usage_warn"]),
+        distance_warn=t.get("distance_warn_m", DEFAULT_THRESHOLDS["distance_warn"]),
+        distance_crit=t.get("distance_crit_m", DEFAULT_THRESHOLDS["distance_crit"]),
+        bad_versions=t.get("bad_versions", DEFAULT_THRESHOLDS["bad_versions"]),
+        no_ping_models=t.get("no_ping_models", DEFAULT_THRESHOLDS["no_ping_models"]),
     )
-
-    def _olt_secret_key(olt_name: str) -> str:
-        # OLT-17.232 -> 17_232
-        return ''.join(ch if ch.isalnum() else '_' for ch in olt_name).replace('__', '_').strip('_')
-
-    def _load_olt_credentials(olt_config_: dict):
-        olt_name = olt_config_.get('name', '')
-        key = _olt_secret_key(olt_name) if olt_name else ''
-        if key:
-            u = os.getenv(f"GPON_OLT_{key}_USERNAME", '')
-            p = os.getenv(f"GPON_OLT_{key}_PASSWORD", '')
-            if u and p:
-                return u, p
-
-        host = olt_config_.get('host', '')
-        host_key = ''.join(ch if ch.isalnum() else '_' for ch in host).replace('__', '_').strip('_')
-        u = os.getenv(f"GPON_OLT_{host_key}_USERNAME", '')
-        p = os.getenv(f"GPON_OLT_{host_key}_PASSWORD", '')
-        return u, p
 
     # Collect data using SecureCRT's existing connection
     from core.collector import TelnetCollector
 
     host = olt_config.get("host", "")
     port = olt_config.get("port", 23)
-    username, password = _load_olt_credentials(olt_config)
+    username, password = load_olt_credentials(olt_config)
     if not username or not password:
         crt.Dialog.MessageBox(
             f"Нет креденшелий для OLT '{olt_config.get('name', host)}'.\n"

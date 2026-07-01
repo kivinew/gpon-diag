@@ -11,19 +11,19 @@ from datetime import datetime, timezone, timedelta
 
 logger = logging.getLogger(__name__)
 
-TZ_LOCAL = timezone(timedelta(hours=7))
-
 from flask import Flask, render_template, request, redirect, url_for, flash, Response
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import text
 
-
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from diagnose import load_config, find_available_olt, parse_input, run_diagnosis, _load_olt_credentials, sanitize_ont_param, _build_thresholds
+# Core utils and constants
+from core.utils import parse_input, sanitize_ont_param, load_olt_credentials
+from core.constants import TZ_LOCAL
 from core.olt import OntNotFoundError, get_olt_connection, close_all
 from core.thresholds import Thresholds
 from core.parser import parse_ont_info, parse_optical_info, parse_line_quality
 from core.models import OntMetrics
+from core.config_parser import _build_thresholds, load_config
+from diagnose import run_diagnosis, find_available_olt
 
 app = Flask(__name__)
 app.debug = False

@@ -7,7 +7,7 @@
 - Подключение к Huawei OLT через Telnet
 - Сбор оптических параметров ONT (Rx/Tx power, laser bias, temperature, voltage)
 - Парсинг диагностической информации (FEC, BIP errors, distance, last-down-cause)
-- Rule-based движок диагностики с 21 правилом (13 default + 8 extended)
+- Rule-based движок диагностики с 20 правилами (12 default + 8 extended)
 - Генерация текстовых и JSON-отчётов
 - Интеграция с SecureCRT (адаптер + stub)
 - Диагностика WAN-соединений и LAN-портов

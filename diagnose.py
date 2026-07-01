@@ -19,7 +19,6 @@ import re
 import sys
 import time
 import yaml
-from datetime import datetime, timezone, timedelta
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
 # Load .env file for credentials – required for OLT connection
@@ -39,8 +38,6 @@ except ImportError:
 except Exception:
     pass
 
-TZ_LOCAL = timezone(timedelta(hours=7))
-
 from core.models import OntMetrics, LanPort
 from core.parser import (
     parse_ont_info, parse_ont_version, parse_optical_info,
@@ -52,6 +49,9 @@ from core.thresholds import Thresholds
 from core.report import DiagnosisReport
 from core.reporter import save_text_report
 from core.olt import get_olt_connection, close_all, OntNotFoundError, OltConnection
+from core.constants import TZ_LOCAL, DEFAULT_PING_TARGET
+from core.utils import parse_input, sanitize_ont_param, load_olt_credentials
+from core.config_parser import _build_thresholds, load_config as core_load_config
 
 logging.basicConfig(level=logging.WARNING, format='%(levelname)s: %(message)s')
 logger = logging.getLogger(__name__)
@@ -60,136 +60,15 @@ logger = logging.getLogger(__name__)
 _registry = AgentRegistry()
 register_builtin_agents(_registry)
 
-MAC_DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "oui.txt")
-
 _search_lock = threading.Lock()
 _search_result = {"found": False, "olt_config": None, "input_data": None}
-
-# Map of Thresholds field names to config.yaml keys
-# When a key is missing from config, the Thresholds dataclass default is used.
-THRESHOLD_KEY_MAP = {
-    "ont_rx_power_warn": "ont_rx_power_warn_dbm",
-    "ont_rx_power_crit": "ont_rx_power_crit_dbm",
-    "olt_rx_power_warn": "olt_rx_power_warn_dbm",
-    "olt_rx_power_crit": "olt_rx_power_crit_dbm",
-    "bip_error_warn": "bip_error_warn",
-    "bip_error_crit": "bip_error_crit",
-    "cpu_usage_warn": "cpu_usage_warn_pct",
-    "memory_usage_warn": "memory_usage_warn_pct",
-    "cpu_temp_warn": "cpu_temp_warn_c",
-    "cpu_temp_crit": "cpu_temp_crit_c",
-    "ont_temperature_warn": "ont_temperature_warn_c",
-    "ont_temperature_crit": "ont_temperature_crit_c",
-    "distance_warn": "distance_warn_m",
-    "distance_crit": "distance_crit_m",
-    "bad_versions": "bad_versions",
-    "no_ping_models": "no_ping_models",
-}
-
-
-def _build_thresholds(config: dict) -> Thresholds:
-    """Build Thresholds from config dict, falling back to dataclass defaults."""
-    raw = config.get("thresholds", {})
-    kwargs = {
-        field_name: raw[config_key]
-        for field_name, config_key in THRESHOLD_KEY_MAP.items()
-        if config_key in raw
-    }
-    return Thresholds(**kwargs)
-
-
-def load_config(path="config.yaml"):
-    if not os.path.exists(path):
-        raise FileNotFoundError(f"Config file '{path}' not found")
-    with open(path, "r", encoding="utf-8") as f:
-        return yaml.safe_load(f)
-
-
-def load_mac_database():
-    mac_db = {}
-    if not os.path.exists(MAC_DB_PATH):
-        return mac_db
-    pattern = re.compile(
-        r"^([0-9A-Fa-f]{2}[-]?[0-9A-Fa-f]{2}[-]?[0-9A-Fa-f]{2})\s+\(hex\)\s+(.+)|"
-        r"^([0-9A-Fa-f]{6})\s+\(base 16\)\s+(.+)"
-    )
-    with open(MAC_DB_PATH, "r", encoding="utf-8") as f:
-        for line in f:
-            m = pattern.match(line.strip())
-            if not m:
-                continue
-            oui = (m.group(1) or m.group(3)).replace("-", "").upper()
-            vendor = (m.group(2) or m.group(4)).strip()
-            mac_db[oui] = vendor.split()[0]
-    return mac_db
-
-
-def get_vendor(mac, mac_db):
-    clean = re.sub(r"[^A-Fa-f0-9]", "", mac).upper()
-    return mac_db.get(clean[:6], "n/a")
-
-
-def sanitize_ont_param(value: str) -> str:
-    if not re.fullmatch(r'\d+', value):
-        raise ValueError(f"Invalid ONT parameter '{value}': must contain only digits")
-    return value
-
-
-def parse_input(buffer):
-    buffer = buffer.strip()
-    if not buffer:
-        raise ValueError("Empty input")
-    if re.fullmatch(r"(?i)(48575443|hwtc)[\da-f]{8}", buffer):
-        return {"type": "serial", "value": buffer.upper()}
-    tokens = buffer.replace("/", " ").split()
-    if len(tokens) == 4 and all(t.isdigit() for t in tokens):
-        return {"type": "address", "frame": tokens[0], "slot": tokens[1], "port": tokens[2], "ont_id": tokens[3]}
-    # Description: добавляем префикс fl_ если это цифры 5-16 символов
-    if re.fullmatch(r"^(fl_|kes)?\d{5,16}$", buffer) or (buffer.isdigit() and 5 <= len(buffer) <= 16):
-        value = buffer
-        if buffer.isdigit():
-            value = f"fl_{buffer}"
-        return {"type": "description", "value": value}
-    return {"type": "description", "value": buffer}
-
-
-def _olt_secret_key(olt_name: str) -> str:
-    """Convert OLT name to env var key. OLT-17.232 -> 17_232 (strip OLT prefix)."""
-    clean = ''.join(ch if ch.isalnum() else '_' for ch in olt_name).replace('__', '_').strip('_')
-    # Strip leading OLT_ prefix if present
-    if clean.upper().startswith("OLT_"):
-        clean = clean[4:]
-    return clean
-
-
-def _load_olt_credentials(olt_config: dict):
-    explicit_key = olt_config.get('credential_key', '')
-    if explicit_key:
-        username = os.getenv(f'GPON_OLT_{explicit_key}_USERNAME', '')
-        password = os.getenv(f'GPON_OLT_{explicit_key}_PASSWORD', '')
-        if username and password:
-            return username, password
-
-    olt_name = olt_config.get('name', '')
-    key = _olt_secret_key(olt_name) if olt_name else ''
-    if key:
-        username = os.getenv(f'GPON_OLT_{key}_USERNAME', '')
-        password = os.getenv(f'GPON_OLT_{key}_PASSWORD', '')
-        if username and password:
-            return username, password
-
-    host = olt_config.get('host', '')
-    host_key = ''.join(ch if ch.isalnum() else '_' for ch in host).replace('__', '_').strip('_')
-    username = os.getenv(f'GPON_OLT_{host_key}_USERNAME', '')
-    password = os.getenv(f'GPON_OLT_{host_key}_PASSWORD', '')
-    return username, password
 
 
 def run_diagnosis(input_data, olt_config, thresholds, allow_actions=True, log=None, ping_target="1.1.1.1", on_olt_info=None, use_ssh=False):
     _log = log or (lambda msg, end=" ", flush=True: print(msg, end=end, flush=flush))
     host = olt_config["host"]
     port = olt_config.get("port", 23)
-    username, password = _load_olt_credentials(olt_config)
+    username, password = load_olt_credentials(olt_config)
     if not username or not password:
         raise ValueError(
             f"Missing OLT credentials for '{olt_config.get('name', host)}'. "
@@ -331,7 +210,7 @@ def run_diagnosis(input_data, olt_config, thresholds, allow_actions=True, log=No
 def find_available_olt(config):
     for olt_config in config.get("olts", []):
         host = olt_config["host"]
-        username, password = _load_olt_credentials(olt_config)
+        username, password = load_olt_credentials(olt_config)
         if not username or not password:
             continue
 
@@ -353,7 +232,7 @@ def find_available_olt(config):
 def search_ont_on_olt(olt_config, input_data):
     """Search for ONT on a single OLT. Returns (olt_config, input_data_with_location) or None."""
     host = olt_config["host"]
-    username, password = _load_olt_credentials(olt_config)
+    username, password = load_olt_credentials(olt_config)
     if not username or not password:
         return None
     try:
@@ -391,11 +270,11 @@ def find_olt_parallel(config, input_data, max_workers=8):
     """Parallel search across all OLTs. Returns (olt_config, input_data_with_location) or raises OntNotFoundError."""
     global _search_result
     _search_result = {"found": False, "olt_config": None, "input_data": None}
-    
+
     # Filter OLTs with credentials
     olts_with_creds = []
     for olt_config in config.get("olts", []):
-        username, password = _load_olt_credentials(olt_config)
+        username, password = load_olt_credentials(olt_config)
         if username and password:
             olts_with_creds.append(olt_config)
     

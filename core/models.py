@@ -2,6 +2,9 @@
 
 from dataclasses import dataclass, field
 from datetime import datetime
+from typing import Optional
+from core.thresholds import Thresholds
+from core.threshold_evaluator import evaluate_ont_rx_power
 
 
 @dataclass
@@ -113,11 +116,6 @@ class OntSummary:
     def is_online(self) -> bool:
         return self.status.lower() in ("online", "working")
 
-    @property
-    def rx_power_status(self) -> str:
+    def rx_power_status(self, thresholds: Optional[Thresholds] = None) -> str:
         """Return status based on thresholds: 'ok', 'warn', 'crit'."""
-        if self.rx_power <= -30.0:
-            return "crit"
-        if self.rx_power <= -26.0:
-            return "warn"
-        return "ok"
+        return evaluate_ont_rx_power(self.rx_power, thresholds)

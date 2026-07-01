@@ -36,15 +36,6 @@ class DiagnosisProblem:
         }
 
 
-BAD_VERSIONS = {
-    "V1R003C00S108",
-    "V1R006C00S130",
-    "V1R006C00S205",
-    "V1R006C00S201",
-    "V1R006C01S201",
-}
-
-
 @dataclass
 class DiagnosisReport:
     timestamp: str

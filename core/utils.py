@@ -11,6 +11,7 @@ from core.constants import (
     MAC_DB_PATH,
     ONLINE_STATUSES,
     DESCRIPTION_DIGITS_PATTERN,
+    DESCRIPTION_PATTERN,
     SERIAL_PATTERN,
 )
 
