@@ -43,6 +43,8 @@ from core.threshold_evaluator import (
     is_bad_version,
     should_skip_ping,
 )
+from core.diagnose_logic import run_diagnosis
+from core.connection_diagnosis import find_available_olt, find_olt_parallel, search_ont_on_olt
 
 __all__ = [
     # Models
@@ -89,4 +91,9 @@ __all__ = [
     'evaluate_bip_errors',
     'is_bad_version',
     'should_skip_ping',
+    # Diagnosis logic
+    'run_diagnosis',
+    'find_available_olt',
+    'find_olt_parallel',
+    'search_ont_on_olt',
 ]
