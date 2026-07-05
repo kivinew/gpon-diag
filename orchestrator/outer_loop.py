@@ -109,6 +109,53 @@ class AgentExecutor(Protocol):
         ...
 
 
+class SubagentExecutor:
+    """Executor that uses MiMoCode actor tool to run subagents.
+    
+    Note: This requires an actor tool implementation. For CLI-based usage,
+    use the orchestrator_ask() function to integrate with MiMoCode.
+    """
+    
+    def __init__(self, project_root: str, zone_resolver: Optional[Callable[[str], str]] = None):
+        self.project_root = project_root
+        self.zone_resolver = zone_resolver
+    
+    def execute(self, agent_id: str, zone: str, files: List[str], task_description: str) -> bool:
+        """Execute a subagent task.
+        
+        This is a placeholder - in MiMoCode context, use actor tool directly.
+        For external usage, create a task file and let agent_client.py poll it.
+        """
+        logger.info(f"SubagentExecutor: would execute zone={zone} task={task_description}")
+        return False
+
+
+def orchestrator_ask(agent_zone: str, task_description: str, files: List[str]) -> bool:
+    """Execute a task using MiMoCode actor tool.
+    
+    Call this from within MiMoCode to spawn a subagent for orchestrator tasks.
+    """
+    import sys
+    import os
+    sys.path.insert(0, os.path.dirname(__file__))
+    
+    from actor import run as actor_run
+    
+    prompt = f"""
+Выполнить задачу в зоне {agent_zone}:
+{task_description}
+
+Файлы для работы: {files}
+
+Правила проекта (AGENTS.md):
+- Не трогать core/models.py и core/engine.py без согласования
+- Оптические параметры — только из display ont optical-info
+- Sentinel-значения в OntMetrics не заменять на None/0
+"""
+    result = actor_run(subagent_type="general", prompt=prompt)
+    return result is not None
+
+
 class OuterLoopController:
     """
     Контроллер внешнего цикла для управления ИИ-агентами.

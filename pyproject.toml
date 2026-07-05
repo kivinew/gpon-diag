@@ -64,6 +64,5 @@ warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = false
 
-[tool.pytest.ini_options]
-asyncio_mode = "auto"
-testpaths = ["tests"]
+[project.scripts]
+gpon-orchestrator = "orchestrator.orchestrator_cli:main"
