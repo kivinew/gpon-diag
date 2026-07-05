@@ -37,6 +37,7 @@ dependencies = [
     # Utilities
     "pyperclip>=1.8.2",
     "python-multipart>=0.0.6",
+    "requests>=2.31.0",
 ]
 
 [project.optional-dependencies]
@@ -49,7 +50,7 @@ dev = [
 ]
 
 [tool.setuptools]
-packages = ["web", "core", "data", "interfaces"]
+packages = ["web", "core", "data", "interfaces", "orchestrator"]
 
 [tool.ruff]
 line-length = 100

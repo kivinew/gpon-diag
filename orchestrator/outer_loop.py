@@ -25,9 +25,9 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Protocol
 
-from .agent_registry import AgentRegistry, AgentStatus, AgentInfo, ZONE_FILE_MAP
-from .lock_manager import ZoneLockManager, LockTimeoutError, LockHeldByOtherError
-from .validator import (
+from orchestrator.agent_registry import AgentRegistry, AgentStatus, AgentInfo, ZONE_FILE_MAP
+from orchestrator.lock_manager import ZoneLockManager, LockTimeoutError, LockHeldByOtherError
+from orchestrator.validator import (
     SentinelValidator,
     RuleValidator,
     StructureValidator,
@@ -540,10 +540,8 @@ if __name__ == "__main__":
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
-    # Определяем корень проекта
     project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-    # Тест: валидация текущего состояния проекта
     controller = create_outer_loop_controller(project_root)
 
     spec = TaskSpec(

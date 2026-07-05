@@ -15,6 +15,13 @@ from flask import Flask, render_template, request, redirect, url_for, flash, Res
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import text
 
+# Orchestrator imports
+from orchestrator.task_card import TaskCard, TaskStatus, load_task_card, list_task_cards
+from orchestrator.agent_registry import AgentRegistry, AgentStatus
+
+# Orchestrator outer loop imports
+from orchestrator.outer_loop import ValidationResult
+
 # Core utils and constants
 from core.utils import parse_input, sanitize_ont_param, load_olt_credentials
 from core.constants import TZ_LOCAL
@@ -711,6 +718,114 @@ def api_port_monitor():
 
     return Response(generate(), mimetype="text/event-stream",
                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+# ===== Orchestrator Agent API =====
+
+@app.route("/orchestrator/api/agent/tasks", methods=["POST"])
+def orchestrator_agent_tasks():
+    """Return pending tasks assigned to a specific agent or zone."""
+    data = request.get_json(silent=True) or {}
+    agent_id = data.get("agent_id", "").strip()
+    zone = data.get("zone", "").strip()
+
+    if not agent_id and not zone:
+        return {"error": "Укажите agent_id или zone."}, 400
+
+    tasks = list_task_cards()
+    matching = []
+    for tc in tasks:
+        if tc.status in (TaskStatus.PENDING, TaskStatus.IN_PROGRESS):
+            if tc.agent_id == agent_id or (zone and tc.zone == zone):
+                matching.append({
+                    "task_id": tc.task_id,
+                    "title": tc.title,
+                    "description": tc.description,
+                    "zone": tc.zone,
+                    "files_intended": tc.metadata.get("files_intended", []),
+                    "validation_criteria": tc.verification_criteria,
+                    "metadata": tc.metadata,
+                    "status": tc.status.value,
+                })
+
+    return {"tasks": matching}
+
+
+@app.route("/orchestrator/api/agent/complete", methods=["POST"])
+def orchestrator_agent_complete():
+    """Mark a task as completed by an agent."""
+    data = request.get_json(silent=True) or {}
+    task_id = data.get("task_id", "").strip()
+    agent_id = data.get("agent_id", "").strip()
+    result = data.get("result", {})
+
+    if not task_id:
+        return {"error": "task_id обязателен."}, 400
+
+    task_card = load_task_card(task_id)
+    if not task_card:
+        return {"error": f"Задача {task_id} не найдена."}, 404
+
+    task_card.status = TaskStatus.IN_PROGRESS
+    task_card.agent_id = agent_id
+    task_card.result = result
+    task_card.save()
+
+    registry = AgentRegistry()
+    registry.heartbeat(agent_id, AgentStatus.IDLE)
+
+    return {"status": "accepted", "task_id": task_id}
+
+
+@app.route("/orchestrator/api/agent/heartbeat", methods=["POST"])
+def orchestrator_agent_heartbeat():
+    """Receive heartbeat from an agent."""
+    data = request.get_json(silent=True) or {}
+    agent_id = data.get("agent_id", "").strip()
+    status = data.get("status", "idle")
+
+    if not agent_id:
+        return {"error": "agent_id обязателен."}, 400
+
+    try:
+        status_enum = AgentStatus(status)
+    except ValueError:
+        return {"error": f"Неизвестный статус: {status}"}, 400
+
+    registry = AgentRegistry()
+    registry.heartbeat(agent_id, status_enum)
+
+    return {"status": "ok"}
+
+
+@app.route("/orchestrator/api/agent/result", methods=["POST"])
+def orchestrator_agent_result():
+    """Submit final result of a task execution."""
+    data = request.get_json(silent=True) or {}
+    task_id = data.get("task_id", "").strip()
+    agent_id = data.get("agent_id", "").strip()
+    success = data.get("success", False)
+    output = data.get("output", "")
+    errors = data.get("errors", [])
+
+    if not task_id:
+        return {"error": "task_id обязателен."}, 400
+
+    task_card = load_task_card(task_id)
+    if not task_card:
+        return {"error": f"Задача {task_id} не найдена."}, 404
+
+    task_card.status = TaskStatus.VERIFICATION_PENDING
+    task_card.result = {"output": output, "success": success, "errors": errors}
+    task_card.save()
+
+    registry = AgentRegistry()
+    if success:
+        registry.set_status(agent_id, AgentStatus.COMPLETED)
+    else:
+        registry.set_status(agent_id, AgentStatus.ERROR, "; ".join(errors))
+
+    return {"status": "result_received"}
 
 
 if __name__ == "__main__":

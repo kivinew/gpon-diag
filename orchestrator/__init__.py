@@ -53,6 +53,8 @@ from .outer_loop import (
     run_task_with_outer_loop,
 )
 
+from .agent_client import AgentClient
+
 # ---------------------------------------------------------------------------
 
 # Helper to ensure a single global registry is created and agents registered
@@ -143,8 +145,9 @@ __all__ = [
     "create_outer_loop_controller",
     "run_task_with_outer_loop",
     "delete_task_from_queue",
-    "delete_task_from_queue",
     "register_builtin_agents",
     "list_agents",
+    # agent_client
+    "AgentClient",
 ]
 
