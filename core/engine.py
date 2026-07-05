@@ -46,7 +46,8 @@ class DiagnosticEngine:
 
 # ── Rules ──
 
-def rule_offline(metrics, t):
+def rule_offline(metrics: OntMetrics, t: Thresholds) -> DiagnosisProblem | None:
+    """Check offline ONT status and diagnose cause."""
     if metrics.is_online:
         return None
     cause = metrics.last_down_cause.lower() if metrics.last_down_cause else ""
@@ -65,7 +66,8 @@ def rule_offline(metrics, t):
     return DiagnosisProblem("warning", "config", f"Offline: {metrics.last_down_cause}", "Уточнить причину отключения, проверить лог на OLT")
 
 
-def rule_low_ont_rx(metrics, t):
+def rule_low_ont_rx(metrics: OntMetrics, t: Thresholds) -> DiagnosisProblem | None:
+    """Check ONT receive optical power against thresholds."""
     if not metrics.is_online or metrics.ont_rx_power >= 900:
         return None
     if metrics.ont_rx_power < t.ont_rx_power_crit:
@@ -77,7 +79,8 @@ def rule_low_ont_rx(metrics, t):
     return None
 
 
-def rule_low_olt_rx(metrics, t):
+def rule_low_olt_rx(metrics: OntMetrics, t: Thresholds) -> DiagnosisProblem | None:
+    """Check OLT receive optical power against thresholds."""
     if not metrics.is_online or metrics.olt_rx_power >= 900:
         return None
     if metrics.olt_rx_power < t.olt_rx_power_crit:
@@ -87,7 +90,8 @@ def rule_low_olt_rx(metrics, t):
     return None
 
 
-def rule_bip_errors(metrics, t):
+def rule_bip_errors(metrics: OntMetrics, t: Thresholds) -> DiagnosisProblem | None:
+    """Check for BIP errors on the optical line."""
     if not metrics.is_online:
         return None
     total = metrics.total_bip_errors
@@ -100,7 +104,8 @@ def rule_bip_errors(metrics, t):
     return None
 
 
-def rule_bad_firmware(metrics, t):
+def rule_bad_firmware(metrics: OntMetrics, t: Thresholds) -> DiagnosisProblem | None:
+    """Check for outdated firmware version."""
     if not metrics.is_online or not metrics.version:
         return None
     if metrics.version.upper() in [v.upper() for v in t.bad_versions]:
@@ -108,7 +113,8 @@ def rule_bad_firmware(metrics, t):
     return None
 
 
-def rule_no_lan(metrics, t):
+def rule_no_lan(metrics: OntMetrics, t: Thresholds) -> DiagnosisProblem | None:
+    """Check for inactive LAN ports on online ONT."""
     if not metrics.is_online:
         return None
     if not metrics.has_lan_activity and metrics.lan_ports:

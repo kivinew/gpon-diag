@@ -20,9 +20,17 @@ from core.thresholds import Thresholds
 @lru_cache
 def get_config() -> dict:
     """Load config.yaml once at startup."""
-    config_path = Path(__file__).parents[3] / "config.yaml"
-    with config_path.open("r", encoding="utf-8") as f:
-        return yaml.safe_load(f)
+    import os
+    # Try multiple locations for config.yaml
+    possible_paths = [
+        Path(__file__).parents[3] / "config.yaml",  # Standard location
+        Path.cwd() / "config.yaml",  # Current working directory
+    ]
+    for config_path in possible_paths:
+        if config_path.exists():
+            with config_path.open("r", encoding="utf-8") as f:
+                return yaml.safe_load(f)
+    raise FileNotFoundError("config.yaml not found in any expected location")
 
 
 @lru_cache
@@ -105,13 +113,14 @@ def get_olt_pool():
 # ──────────────────────────────────────────────
 async def lifespan_init():
     """Initialize on startup."""
+    from sqlalchemy import text
     # Trigger config load
     get_config()
     get_thresholds()
     get_db_engine()
     # Test DB connection
     async with get_session_maker()() as session:
-        await session.execute("SELECT 1")
+        await session.execute(text("SELECT 1"))
 
 
 async def lifespan_shutdown():

@@ -27,17 +27,22 @@ THRESHOLD_KEY_MAP = {
 
 
 def _build_thresholds(config: dict) -> Thresholds:
-    """Build Thresholds from config dict, falling back to dataclass defaults."""
+    """Build Thresholds from config dict, falling back to dataclass defaults.
+    
+    Args:
+        config: Configuration dictionary from config.yaml
+        
+    Returns:
+        Thresholds object with values from config or defaults
+    """
     raw = config.get("thresholds", {})
-    kwargs = {
-        field_name: raw[config_key]
-        for field_name, config_key in THRESHOLD_KEY_MAP.items()
-        if config_key in raw
-    }
-    # Apply defaults for missing values
-    for key, default_value in DEFAULT_THRESHOLDS.items():
-        if key not in kwargs:
-            kwargs[key] = default_value
+    kwargs = {}
+    
+    for field_name, config_key in THRESHOLD_KEY_MAP.items():
+        if config_key in raw:
+            kwargs[field_name] = raw[config_key]
+    
+    # Apply defaults for missing values (Thresholds dataclass defaults)
     return Thresholds(**kwargs)
 
 
