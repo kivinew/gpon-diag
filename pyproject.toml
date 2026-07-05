@@ -32,6 +32,7 @@ dependencies = [
     # Legacy Flask (kept for migration period)
     "Flask>=3.0.0",
     "Flask-SQLAlchemy>=3.0.0",
+    "waitress>=2.1.0",
 
     # Utilities
     "pyperclip>=1.8.2",
@@ -45,7 +46,6 @@ dev = [
     "httpx>=0.26.0",
     "ruff>=0.1.0",
     "mypy>=1.7.0",
-    "types-python-dotenv",
 ]
 
 [tool.setuptools]
