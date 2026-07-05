@@ -4,14 +4,17 @@
   "description": "Develop verification system",
   "zone": "model",
   "agent_id": "",
-  "status": "pending",
+  "status": "verification_pending",
   "created_at": 1782577226.2967474,
   "updated_at": 1782577226.2967474,
   "verification_criteria": [
     "check_code",
     "run_tests"
   ],
-  "result": {},
+  "result": {
+    "output": "Done",
+    "success": true
+  },
   "errors": [],
   "revision_count": 0,
   "max_revisions": 3,

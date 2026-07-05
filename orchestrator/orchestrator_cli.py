@@ -157,7 +157,7 @@ def cmd_complete(args: argparse.Namespace) -> int:
         print(f"Task {args.task_id} not found")
         return 1
 
-    card.status = TaskStatus.VALIDATION_PENDING
+    card.status = TaskStatus.VERIFICATION_PENDING
     card.result = {"output": args.output, "success": args.success}
     card.save()
 

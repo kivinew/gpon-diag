@@ -38,6 +38,7 @@ dependencies = [
     "pyperclip>=1.8.2",
     "python-multipart>=0.0.6",
     "requests>=2.31.0",
+    "chardet>=5.0.0",
 ]
 
 [project.optional-dependencies]
