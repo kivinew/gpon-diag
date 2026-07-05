@@ -588,6 +588,24 @@ def orchestrator_set_status():
     return {"task_id": task_id, "status": card.status.value}
 
 
+@app.route("/orchestrator/delete_task/<task_id>", methods=["DELETE"])
+def orchestrator_delete_task(task_id):
+    from orchestrator.task_card import load_task_card
+    import shutil
+
+    card = load_task_card(task_id)
+    if not card:
+        return {"error": "Task not found"}, 404
+
+    # Remove task directory - use absolute project root
+    tasks_base = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".mimocode", "tasks")
+    task_dir = os.path.join(tasks_base, task_id)
+    if os.path.exists(task_dir):
+        shutil.rmtree(task_dir)
+
+    return {"status": "deleted", "task_id": task_id}
+
+
 @app.route("/api/port-monitor", methods=["POST"])
 def api_port_monitor():
     """SSE endpoint for port monitoring - collects 'display ont info summary' for all ONTs on a GPON port.

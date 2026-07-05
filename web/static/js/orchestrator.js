@@ -66,18 +66,39 @@ async function createTask() {
     }
 }
 
-async function verifyAllTasks() {
-    const response = await fetch('/orchestrator/tasks');
-    const data = await response.json();
-    
-    for (const task of data.tasks) {
-        if (task.status === 'in_progress') {
-            await fetch('/orchestrator/verify', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({task_id: task.task_id})
-            });
-        }
-    }
+async function deleteTask(taskId) {
+    if (!confirm('Удалить задачу ' + taskId + '?')) return;
+    await fetch('/orchestrator/delete_task/' + taskId, {method: 'DELETE'});
     loadTasks();
+}
+
+async function verifyAllTasks() {
+    try {
+        const response = await fetch('/orchestrator/tasks');
+        const data = await response.json();
+
+        console.log('Tasks to verify:', data.tasks);
+
+        for (const task of data.tasks) {
+            // Check tasks that need validation
+            if (['pending', 'in_progress', 'verification_pending'].includes(task.status)) {
+                console.log('Verifying task:', task.task_id);
+                try {
+                    const verifyResp = await fetch('/orchestrator/verify', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({task_id: task.task_id})
+                    });
+                    const result = await verifyResp.json();
+                    console.log('Verify result for ' + task.task_id + ':', result);
+                } catch (err) {
+                    console.error('Verify error for ' + task.task_id + ':', err);
+                }
+            }
+        }
+        loadTasks();
+    } catch (err) {
+        console.error('Failed to load tasks:', err);
+        alert('Ошибка: ' + err.message);
+    }
 }
