@@ -32,11 +32,13 @@ async function loadAgents() {
 
 function renderTask(task) {
     const errors = task.errors.length ? `<div class="error-list">Ошибки: ${task.errors.join(', ')}</div>` : '';
+    const assignBtn = task.status === 'pending' ? `<button class="btn btn-small" onclick="assignAgentPrompt('${task.task_id}')">Назначить агента</button>` : '';
     return `<div class="task-item status-${task.status}">
         <strong>${task.task_id}</strong>: ${task.title}
-        <div>Зона: <span class="agent-zone">${task.zone}</span> | Попытки: ${task.revision_count}</div>
+        <div>Зона: <span class="agent-zone">${task.zone}</span> | Статус: ${task.status} | Попытки: ${task.revision_count}</div>
         ${errors}
-        <button class="btn" style="margin-top:0.5rem;" onclick="deleteTask('${task.task_id}')">Удалить</button>
+        <button class="btn" onclick="deleteTask('${task.task_id}')">Удалить</button>
+        ${assignBtn}
     </div>`;
 }
 
@@ -64,6 +66,17 @@ async function createTask() {
         document.getElementById('create-task-form').reset();
         loadTasks();
     }
+}
+
+async function assignAgentPrompt(taskId) {
+    const agentId = prompt('Введите ID агента:');
+    if (!agentId) return;
+    await fetch('/orchestrator/set_status', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({task_id: taskId, status: 'in_progress', agent_id: agentId})
+    });
+    loadTasks();
 }
 
 async function deleteTask(taskId) {
