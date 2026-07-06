@@ -55,8 +55,10 @@ from .outer_loop import (
 
 from .agent_client import AgentClient
 
-# ---------------------------------------------------------------------------
+# Global registry instance
+_global_registry: AgentRegistry | None = None
 
+# ---------------------------------------------------------------------------
 # Helper to ensure a single global registry is created and agents registered
 def _ensure_global_registry() -> AgentRegistry:
     global _global_registry

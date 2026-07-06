@@ -535,9 +535,9 @@ def orchestrator_tasks():
 
 @app.route("/orchestrator/agents", methods=["GET"])
 def orchestrator_agents():
-    from orchestrator.agent_registry import AgentRegistry, AgentStatus
-    registry = AgentRegistry()
-    agents = registry.list_all()
+    from orchestrator import list_agents
+    agents = list_agents()
+    agent_data = []
     agent_data = []
     for aid, info in agents.items():
         agent_data.append({
@@ -586,6 +586,23 @@ def orchestrator_set_status():
     card.agent_id = request.json.get("agent_id", "")
     card.save()
     return {"task_id": task_id, "status": card.status.value}
+
+
+@app.route("/orchestrator/register_agent", methods=["POST"])
+def orchestrator_register_agent():
+    from orchestrator import _ensure_global_registry
+    data = request.json or {}
+    agent_id = data.get("agent_id")
+    zone = data.get("zone")
+    if not agent_id or not zone:
+        return {"error": "agent_id and zone required"}, 400
+    registry = _ensure_global_registry()
+    try:
+        registry.register(agent_id=agent_id, zone=zone, files_intended=[], metadata={})
+        registry.set_status(agent_id, AgentStatus.ACTIVE)
+        return {"status": "registered", "agent_id": agent_id, "zone": zone}
+    except ValueError as e:
+        return {"error": str(e)}, 400
 
 
 @app.route("/orchestrator/delete_task/<task_id>", methods=["DELETE"])

@@ -79,6 +79,19 @@ async function assignAgentPrompt(taskId) {
     loadTasks();
 }
 
+async function registerAgentPrompt() {
+    const agentId = prompt('Введите ID агента (например: claude, parser_bot):');
+    if (!agentId) return;
+    const zone = prompt('Введите зону (parser, engine, model, connection, report, web, cli):');
+    if (!zone) return;
+    await fetch('/orchestrator/register_agent', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({agent_id: agentId, zone: zone})
+    });
+    loadAgents();
+}
+
 async function deleteTask(taskId) {
     if (!confirm('Удалить задачу ' + taskId + '?')) return;
     await fetch('/orchestrator/delete_task/' + taskId, {method: 'DELETE'});
