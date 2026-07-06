@@ -1,8 +1,11 @@
-{% extends "base.html" %}
+{% extends 'base.html' %}
+
 {% block title_extra %} &mdash; Оркестратор{% endblock %}
+
 {% block styles %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/orchestrator.css') }}">
 {% endblock %}
+
 {% block content %}
 <div class="orchestrator-container">
     <h1 class="page-title">Оркестратор агентов</h1>
@@ -48,13 +51,13 @@
                     <option value="web">web</option>
                     <option value="cli">cli</option>
                 </select>
-                <input type="text" id="task-agent" placeholder="ID агента (опционально)">
             </div>
             <button type="submit" class="btn">Создать</button>
         </form>
     </div>
 </div>
 {% endblock %}
+
 {% block scripts %}
 <script src="{{ url_for('static', filename='js/orchestrator.js') }}"></script>
 {% endblock %}

@@ -54,12 +54,11 @@ async function createTask() {
     const title = document.getElementById('task-title').value;
     const description = document.getElementById('task-description').value;
     const zone = document.getElementById('task-zone').value;
-    const agent = document.getElementById('task-agent').value;
     
     const response = await fetch('/orchestrator/create_task', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({title, description, zone, agent_id: agent})
+        body: JSON.stringify({title, description, zone})
     });
     
     if (response.ok) {
