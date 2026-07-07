@@ -13,32 +13,28 @@ dependencies = [
     "pyyaml>=6.0.3",
     "telnetlib3>=4.0.4",
     "python-dotenv>=1.0.0",
-
     # FastAPI Backend
     "fastapi>=0.109.0",
     "uvicorn[standard]>=0.27.0",
     "pydantic>=2.5.0",
     "pydantic-settings>=2.1.0",
     "anyio>=4.0.0",
-
     # Database
     "sqlalchemy>=2.0.0",
     "aiosqlite>=0.19.0",
     "alembic>=1.13.0",
-
     # Frontend (build-time, not runtime)
     # npm/pnpm handles React, Vite, Tailwind
-
     # Legacy Flask (kept for migration period)
     "Flask>=3.0.0",
     "Flask-SQLAlchemy>=3.0.0",
     "waitress>=2.1.0",
-
     # Utilities
     "pyperclip>=1.8.2",
     "python-multipart>=0.0.6",
     "requests>=2.31.0",
     "chardet>=5.0.0",
+    "flask-cors>=6.0.5",
 ]
 
 [project.optional-dependencies]
