@@ -57,7 +57,7 @@ gpon-diag/
 │   │   └── result.html        # Result view
 │   └── static/
 │       ├── css/               # Stylesheets
-│       └── js/                # dashboard.js, orchestrator.js
+│       └── js/                # dashboard.js
 │
 ├── web/api/                   # FastAPI backend (new, WebSocket + REST)
 │   ├── main.py                # FastAPI app with lifespan, CORS, static files
@@ -76,14 +76,6 @@ gpon-diag/
 │       ├── health.py          # GET /api/health
 │       └── ws.py              # WebSocket endpoints
 │
-├── orchestrator/              # Agent management system
-│   ├── __init__.py
-│   ├── agent_registry.py      # AgentRegistry: zone locking, file conflict detection
-│   ├── lock_manager.py        # File/zone locking
-│   ├── validator.py           # Code validation
-│   ├── outer_loop.py          # External control loop
-│   └── task_card.py           # Task management
-│
 ├── data/                      # Runtime data (gitignored)
 │
 │
@@ -100,8 +92,7 @@ gpon-diag/
 │
 ├── tests/
 │   ├── test_smoke.py          # Engine smoke tests
-│   ├── test_loop_runner.py    # Loop runner tests
-│   └── test_orchestrator_delete.py
+│   └── test_loop_runner.py    # Loop runner tests
 │
 └── scripts/
     ├── check_and_start_server.py  # Health check + Waitress production server
@@ -117,8 +108,7 @@ gpon-diag/
 5. **File locking** — `hermes-lockutils/` for thread-safe concurrent report writes
 6. **Dual web stack** — Flask (SSE, legacy) + FastAPI (WebSocket, new)
 7. **Batch processing** — `loop_run.py` + `LoopRunner` for cyclic diagnosis
-8. **Agent orchestration** — Zone locking, file conflict detection, task cards
-9. **SQLite history** — Persistent diagnosis history in `data/diagnoses.db`
+8. **SQLite history** — Persistent diagnosis history in `data/diagnoses.db`
 
 ## Credentials Setup (Three-tier resolution)
 

@@ -34,7 +34,6 @@ core/crt_stub.py     ← Эмуляция SecureCRT API (legacy, не трога
 core/loop_runner.py  ← Циклическое выполнение диагностики
 web/app.py           ← Flask + SSE (real-time логи, SQLite)
 mcp_server.py        ← MCP сервер для AI-интеграции (5 tools: gpon_connect, gpon_diagnose, gpon_clear_errors, gpon_reset_lan_port, gpon_get_optics)
-orchestrator/        ← Модуль оркестрации AI-агентов
 tests/test_smoke.py  ← Smoke-тесты (без OLT)
 hermes-lockutils/    ← Файловая блокировка (atomic mkdir)
 AGENTS.md            ← Контракт для мультиагентной разработки
@@ -50,7 +49,6 @@ AGENTS.md            ← Контракт для мультиагентной р
 | Соединение | `core/olt.py` | Добавлять методы. Не менять `_read_to_prompt`, `send_command`, `_gpon_ctx` |
 | Отчёт | `core/report.py`, `core/reporter.py` | Расширять `to_text()` / `to_dict()`. Не удалять секции. |
 | Веб | `web/app.py`, `web/templates/*` | Свободная зона, не ломать импорты из `core.*` |
-| Оркестрация | `orchestrator/*.py`, `core/loop_runner.py` | Настройка очередей, агентов, контроля |
 | CLI | `diagnose.py` | Добавлять аргументы. Не менять `run_diagnosis()` |
 
 ---
@@ -319,16 +317,8 @@ GPON_OLT_RADIUS_PASSWORD=password
 
 ---
 
-## 11. Модуль оркестрации (orchestrator/)
+## 11. LoopRunner (core/loop_runner.py)
 
-Асинхронный контроль выполнения задач AI-агентами:
-- `agent_registry.py` — реестр агентов и их статусов
-- `task_card.py` — карточки задач с проверкой
-- `lock_manager.py` — управление блокировками файлов
-- `outer_loop.py` — внешний цикл оркестрации
-- `external_control.py` — внешний контроль задач
-
-### LoopRunner (core/loop_runner.py)
 Циклическое выполнение диагностики для пакетной обработки:
 - `TaskQueue` — очередь задач с персистентностью в JSON
 - `LoopTask` — атомарная задача (diagnose, batch_diagnose, generate_rules)

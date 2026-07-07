@@ -59,17 +59,8 @@ diagnose.py           → CLI entry point, orchestrates diagnosis flow
 ```
 web/app.py            → Main Flask app with SSE endpoints
 web/templates/        → HTML templates (index.html, dashboard.html, result.html)
-web/static/js/        → dashboard.js, orchestrator.js
+web/static/js/        → dashboard.js
 web/static/css/       → Stylesheets
-```
-
-**Orchestrator (Agent Management):**
-```
-orchestrator/agent_registry.py → Agent registration & zone locking
-orchestrator/lock_manager.py   → File/zone locking
-orchestrator/validator.py      → Code validation
-orchestrator/outer_loop.py     → External control loop
-orchestrator/task_card.py      → Task management
 ```
 
 ## Key Design Decisions
@@ -124,13 +115,6 @@ gpon-diag/
 │       ├── index.html
 │       ├── dashboard.html
 │       └── result.html
-├── orchestrator/
-│   ├── __init__.py
-│   ├── agent_registry.py
-│   ├── lock_manager.py
-│   ├── validator.py
-│   ├── outer_loop.py
-│   └── task_card.py
 ├── data/
 │   ├── reports/          # Generated reports
 │   ├── incidents/        # Incident storage (reserved)
@@ -264,7 +248,7 @@ import sys
 sys.path.append("hermes-lockutils")
 from file_lock import lock_file, unlock_file
 
-# Option B: via importlib (core/reporter.py, orchestrator/lock_manager.py)
+# Option B: via importlib (core/reporter.py)
 import importlib.util
 _spec = importlib.util.spec_from_file_location("file_lock", "hermes-lockutils/file_lock.py")
 ```

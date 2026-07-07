@@ -23,7 +23,6 @@ diagnose.py → CLI orchestration
   core/report.py   → DiagnosisProblem + DiagnosisReport (to_text/to_dict)
   core/reporter.py → File-saving with hermes-lockutils
 web/app.py         → Flask, SSE, SQLite (data/diagnoses.db)
-orchestrator/      → Agent task management
 ```
 
 ## Key conventions (from AGENTS.md)
