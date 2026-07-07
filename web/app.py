@@ -166,12 +166,14 @@ def verify_task():
 
 @app.route("/orchestrator/agents")
 def get_agents():
-    agents = {aid: info.__dict__ for aid, info in _registry.list_all().items()}
+    from orchestrator import list_agents
+    agents = list_agents()
     return jsonify({"agents": agents})
 
 
 @app.route("/orchestrator/register_agent", methods=["POST"])
 def register_agent():
+    from orchestrator import _ensure_global_registry
     data = request.get_json() or {}
     agent_id = data.get("agent_id")
     zone = data.get("zone")
@@ -179,8 +181,10 @@ def register_agent():
     if not agent_id or not zone:
         return jsonify({"error": "agent_id and zone required"}), 400
 
+    registry = _ensure_global_registry()
     try:
-        _registry.register(agent_id=agent_id, zone=zone)
+        registry.register(agent_id=agent_id, zone=zone, files_intended=[], metadata={})
+        registry.set_status(agent_id, AgentStatus.ACTIVE)
         return jsonify({"status": "registered", "agent_id": agent_id})
     except ValueError as e:
         return jsonify({"error": str(e)}), 400

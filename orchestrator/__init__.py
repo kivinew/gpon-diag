@@ -69,9 +69,16 @@ def _ensure_global_registry() -> AgentRegistry:
     return _global_registry
 
 # Public wrapper for listing agents
-def list_agents() -> dict:
-    """Return a dictionary of all registered agents (id → AgentInfo)."""
-    return _ensure_global_registry().list_all()
+def list_agents() -> list:
+    """Return a list of all registered agents for JSON serialization."""
+    registry = _ensure_global_registry()
+    agents = []
+    for aid, info in registry.list_all().items():
+        agent_dict = info.__dict__.copy()
+        agent_dict["agent_id"] = aid
+        agent_dict["status"] = str(info.status.value).replace("AgentStatus.", "")
+        agents.append(agent_dict)
+    return agents
 
 # ---------------------------------------------------------------------------
 # Built‑in AI agent registration helper
