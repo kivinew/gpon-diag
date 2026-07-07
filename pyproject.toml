@@ -47,7 +47,7 @@ dev = [
 ]
 
 [tool.setuptools]
-packages = ["web", "core", "data", "interfaces", "orchestrator"]
+packages = ["web", "core", "data", "interfaces"]
 
 [tool.ruff]
 line-length = 100
@@ -62,4 +62,3 @@ warn_unused_configs = true
 disallow_untyped_defs = false
 
 [project.scripts]
-gpon-orchestrator = "orchestrator.orchestrator_cli:main"

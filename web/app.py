@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Flask web interface with orchestrator endpoints for AI agent task management."""
+"""Flask web interface for GPON diagnostics."""
 
 from flask import Flask, jsonify, request, render_template
 from flask_sqlalchemy import SQLAlchemy
@@ -7,6 +7,7 @@ from flask_cors import CORS
 import logging
 import os
 import sys
+from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -17,253 +18,38 @@ app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///../data/diagnoses.db"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 db = SQLAlchemy(app)
 
-# Import models for test compatibility
-from web.api.models import Diagnosis, PortSnapshot
 
-from orchestrator.agent_registry import AgentRegistry, AgentStatus
-from orchestrator.task_card import (
-    TaskCard, TaskStatus, create_task_card, load_task_card, list_task_cards
-)
-from orchestrator.outer_loop import OuterLoopController, TaskSpec, ValidationLevel
-from orchestrator.external_control import ExternalControlLoop
+# Model definitions
+class Diagnosis(db.Model):
+    """Diagnosis report (legacy)."""
+    __tablename__ = "diagnoses"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    timestamp = db.Column(db.String, nullable=False)
+    olt_host = db.Column(db.String, nullable=False)
+    olt_name = db.Column(db.String, nullable=False, default="")
+    ont_address = db.Column(db.String, nullable=False)
+    input_type = db.Column(db.String, nullable=False)
+    input_value = db.Column(db.String, nullable=False)
+    report_json = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.now)
+
+
+class PortSnapshot(db.Model):
+    """Snapshot of all ONTs on a GPON port."""
+    __tablename__ = "port_snapshots"
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    timestamp = db.Column(db.String, nullable=False)
+    olt_name = db.Column(db.String, nullable=False)
+    olt_host = db.Column(db.String, nullable=False)
+    frame = db.Column(db.String, nullable=False)
+    slot = db.Column(db.String, nullable=False)
+    port = db.Column(db.String, nullable=False)
+    ont_count = db.Column(db.Integer, default=0)
+    data_json = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.now)
+
 
 logger = logging.getLogger(__name__)
-
-# Registry singleton
-_registry = AgentRegistry()
-_outer_loop = OuterLoopController(project_root=os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-_runner = ExternalControlLoop(
-    project_root=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    registry=_registry
-)
-
-# ===================== Orchestrator Web UI =====================
-
-@app.route("/orchestrator/")
-def orchestrator_index():
-    return render_template("orchestrator/index.html")
-
-
-# ===================== Task Endpoints =====================
-
-@app.route("/orchestrator/tasks")
-def get_tasks():
-    tasks = [card.to_dict() for card in list_task_cards()]
-    return jsonify({"tasks": tasks})
-
-
-@app.route("/orchestrator/create_task", methods=["POST"])
-def create_task():
-    data = request.get_json() or {}
-    title = data.get("title", "Без названия")
-    description = data.get("description", "")
-    zone = data.get("zone", "parser")
-
-    card = create_task_card(
-        title=title,
-        description=description,
-        zone=zone,
-        verification_criteria=["check_code"],
-    )
-
-    return jsonify({"task_id": card.task_id, "status": card.status.value})
-
-
-@app.route("/orchestrator/set_status", methods=["POST"])
-def set_status():
-    data = request.get_json() or {}
-    task_id = data.get("task_id")
-    status = data.get("status")
-    agent_id = data.get("agent_id", "")
-
-    if not task_id:
-        return jsonify({"error": "task_id required"}), 400
-
-    card = load_task_card(task_id)
-    if not card:
-        return jsonify({"error": f"Task {task_id} not found"}), 404
-
-    old_status = card.status
-    if status == "in_progress":
-        card.status = TaskStatus.IN_PROGRESS
-        card.agent_id = agent_id
-        card.revision_count += 1  # Increment attempt count
-        card.updated_at = __import__("time").time()
-        card.save()
-
-        # Register agent in registry
-        zone = card.zone
-        try:
-            _registry.register(
-                agent_id=agent_id,
-                zone=zone,
-                files_intended=card.metadata.get("files_intended", []),
-            )
-            _registry.set_status(agent_id, AgentStatus.ACTIVE)
-        except ValueError:
-            pass  # Agent may already be registered
-
-    elif status == "completed":
-        card.status = TaskStatus.COMPLETED
-        card.updated_at = __import__("time").time()
-        card.save()
-        if agent_id:
-            _registry.set_status(agent_id, AgentStatus.COMPLETED)
-
-    elif status == "verification_pending":
-        card.status = TaskStatus.VERIFICATION_PENDING
-        card.agent_id = agent_id
-        card.updated_at = __import__("time").time()
-        card.save()
-
-    return jsonify({"task_id": task_id, "status": card.status.value, "revision_count": card.revision_count})
-
-
-@app.route("/orchestrator/delete_task/<task_id>", methods=["DELETE"])
-def delete_task(task_id):
-    card = load_task_card(task_id)
-    if card:
-        path = card._path()
-        if os.path.exists(path):
-            os.remove(path)
-            dir_path = os.path.dirname(path)
-            if os.path.exists(dir_path):
-                try:
-                    os.rmdir(dir_path)
-                except OSError:
-                    pass
-    return jsonify({"status": "deleted"})
-
-
-@app.route("/orchestrator/verify", methods=["POST"])
-def verify_task():
-    data = request.get_json() or {}
-    task_id = data.get("task_id")
-
-    if not task_id:
-        return jsonify({"error": "task_id required"}), 400
-
-    card = load_task_card(task_id)
-    if not card:
-        return jsonify({"error": f"Task {task_id} not found"}), 404
-
-    # Only verify tasks with assigned agents
-    if not card.agent_id:
-        return jsonify({"error": "Task has no assigned agent"}), 400
-
-    result = _runner.verify_and_update(task_id)
-
-    if result.success:
-        card.status = TaskStatus.COMPLETED
-    else:
-        card.status = TaskStatus.REVISION_REQUIRED
-        card.errors = result.errors
-        card.revision_count += 1  # Increment on revision needed
-
-    card.save()
-
-    return jsonify({
-        "task_id": task_id,
-        "passed": result.success,
-        "errors": result.errors,
-        "warnings": result.warnings,
-    })
-
-
-@app.route("/orchestrator/agents")
-def get_agents():
-    from orchestrator import list_agents
-    agents = list_agents()
-    return jsonify({"agents": agents})
-
-
-@app.route("/orchestrator/register_agent", methods=["POST"])
-def register_agent():
-    from orchestrator import _ensure_global_registry
-    data = request.get_json() or {}
-    agent_id = data.get("agent_id")
-    zone = data.get("zone")
-
-    if not agent_id or not zone:
-        return jsonify({"error": "agent_id and zone required"}), 400
-
-    registry = _ensure_global_registry()
-    try:
-        registry.register(agent_id=agent_id, zone=zone, files_intended=[], metadata={})
-        registry.set_status(agent_id, AgentStatus.ACTIVE)
-        return jsonify({"status": "registered", "agent_id": agent_id})
-    except ValueError as e:
-        return jsonify({"error": str(e)}), 400
-
-
-@app.route("/orchestrator/heartbeat", methods=["POST"])
-def heartbeat():
-    data = request.get_json() or {}
-    agent_id = data.get("agent_id")
-    if not agent_id:
-        return jsonify({"error": "agent_id required"}), 400
-    _registry.heartbeat(agent_id)
-    return jsonify({"status": "ok"})
-
-
-@app.route("/orchestrator/api/agent/tasks", methods=["GET", "POST"])
-def agent_tasks():
-    from orchestrator import _ensure_global_registry
-    agent_id = request.args.get("agent_id") or (request.get_json() or {}).get("agent_id")
-    registry = _ensure_global_registry()
-    agent_info = registry.get_agent(agent_id)
-    if not agent_info:
-        return jsonify({"error": "Agent not registered"}), 404
-
-    tasks = [
-        tc.to_dict() for tc in list_task_cards()
-        if tc.agent_id == agent_id and tc.status in (TaskStatus.IN_PROGRESS, TaskStatus.VERIFICATION_PENDING)
-    ]
-    return jsonify({"tasks": tasks})
-
-
-@app.route("/orchestrator/api/agent/result", methods=["POST"])
-def agent_result():
-    data = request.get_json() or {}
-    task_id = data.get("task_id")
-    agent_id = data.get("agent_id")
-    success = data.get("success", True)
-    output = data.get("output", "")
-    errors = data.get("errors", [])
-
-    card = load_task_card(task_id)
-    if not card:
-        return jsonify({"error": "Task not found"}), 404
-
-    if success:
-        card.status = TaskStatus.COMPLETED
-        card.result = output
-    else:
-        card.status = TaskStatus.FAILED
-        card.errors = errors
-        card.revision_count += 1
-
-    card.save()
-    return jsonify({"status": "ok"})
-
-
-@app.route("/orchestrator/api/agent/heartbeat", methods=["POST"])
-def agent_heartbeat():
-    data = request.get_json() or {}
-    agent_id = data.get("agent_id")
-    if not agent_id:
-        return jsonify({"error": "agent_id required"}), 400
-    _registry.heartbeat(agent_id)
-    return jsonify({"status": "ok"})
-
-
-@app.route("/orchestrator/delete_agent/<agent_id>", methods=["DELETE"])
-def delete_agent(agent_id):
-    from orchestrator import _ensure_global_registry
-    registry = _ensure_global_registry()
-    registry.deregister(agent_id)
-    return jsonify({"status": "deleted", "agent_id": agent_id})
-
 
 # ===================== Main Routes =====================
 
