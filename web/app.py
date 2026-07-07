@@ -147,6 +147,10 @@ def verify_task():
     if not card:
         return jsonify({"error": f"Task {task_id} not found"}), 404
 
+    # Only verify tasks with assigned agents
+    if not card.agent_id:
+        return jsonify({"error": "Task has no assigned agent"}), 400
+
     result = _runner.verify_and_update(task_id)
 
     if result.success:
@@ -200,6 +204,65 @@ def heartbeat():
         return jsonify({"error": "agent_id required"}), 400
     _registry.heartbeat(agent_id)
     return jsonify({"status": "ok"})
+
+
+@app.route("/orchestrator/api/agent/tasks", methods=["GET", "POST"])
+def agent_tasks():
+    from orchestrator import _ensure_global_registry
+    agent_id = request.args.get("agent_id") or (request.get_json() or {}).get("agent_id")
+    registry = _ensure_global_registry()
+    agent_info = registry.get_agent(agent_id)
+    if not agent_info:
+        return jsonify({"error": "Agent not registered"}), 404
+
+    tasks = [
+        tc.to_dict() for tc in list_task_cards()
+        if tc.agent_id == agent_id and tc.status in (TaskStatus.IN_PROGRESS, TaskStatus.VERIFICATION_PENDING)
+    ]
+    return jsonify({"tasks": tasks})
+
+
+@app.route("/orchestrator/api/agent/result", methods=["POST"])
+def agent_result():
+    data = request.get_json() or {}
+    task_id = data.get("task_id")
+    agent_id = data.get("agent_id")
+    success = data.get("success", True)
+    output = data.get("output", "")
+    errors = data.get("errors", [])
+
+    card = load_task_card(task_id)
+    if not card:
+        return jsonify({"error": "Task not found"}), 404
+
+    if success:
+        card.status = TaskStatus.COMPLETED
+        card.result = output
+    else:
+        card.status = TaskStatus.FAILED
+        card.errors = errors
+        card.revision_count += 1
+
+    card.save()
+    return jsonify({"status": "ok"})
+
+
+@app.route("/orchestrator/api/agent/heartbeat", methods=["POST"])
+def agent_heartbeat():
+    data = request.get_json() or {}
+    agent_id = data.get("agent_id")
+    if not agent_id:
+        return jsonify({"error": "agent_id required"}), 400
+    _registry.heartbeat(agent_id)
+    return jsonify({"status": "ok"})
+
+
+@app.route("/orchestrator/delete_agent/<agent_id>", methods=["DELETE"])
+def delete_agent(agent_id):
+    from orchestrator import _ensure_global_registry
+    registry = _ensure_global_registry()
+    registry.deregister(agent_id)
+    return jsonify({"status": "deleted", "agent_id": agent_id})
 
 
 # ===================== Main Routes =====================

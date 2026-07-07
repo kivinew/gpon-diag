@@ -24,7 +24,26 @@ async function loadAgents() {
     try {
         const response = await fetch('/orchestrator/agents');
         const data = await response.json();
-        container.innerHTML = data.agents.map(renderAgent).join('') || '<p>Нет агентов</p>';
+        const agents = data.agents || [];
+        
+        if (agents.length === 0) {
+            container.innerHTML = '<p>Нет агентов</p>';
+            return;
+        }
+        
+        // Group agents by zone
+        const byZone = {};
+        agents.forEach(a => {
+            if (!byZone[a.zone]) byZone[a.zone] = [];
+            byZone[a.zone].push(a);
+        });
+        
+        let html = '';
+        for (const zone of Object.keys(byZone).sort()) {
+            html += `<div class="zone-group"><strong>${zone}:</strong></div>`;
+            html += byZone[zone].map(renderAgent).join('');
+        }
+        container.innerHTML = html;
     } catch (err) {
         container.innerHTML = '<p class="error">Ошибка загрузки агентов</p>';
     }
@@ -32,10 +51,12 @@ async function loadAgents() {
 
 function renderTask(task) {
     const errors = task.errors.length ? `<div class="error-list">Ошибки: ${task.errors.join(', ')}</div>` : '';
+    const agentInfo = task.agent_id ? `<span class="assigned-agent">Агент: ${task.agent_id}</span>` : '';
     const assignBtn = task.status === 'pending' ? `<button class="btn btn-small" onclick="assignAgentPrompt('${task.task_id}')">Назначить агента</button>` : '';
     return `<div class="task-item status-${task.status}">
         <strong>${task.task_id}</strong>: ${task.title}
         <div>Зона: <span class="agent-zone">${task.zone}</span> | Статус: ${task.status} | Попытки: ${task.revision_count}</div>
+        ${agentInfo}
         ${errors}
         <button class="btn" onclick="deleteTask('${task.task_id}')">Удалить</button>
         ${assignBtn}
@@ -47,6 +68,7 @@ function renderAgent(agent) {
         <span class="agent-id">${agent.agent_id}</span>
         <span class="agent-zone">${agent.zone}</span>
         <span class="status-badge ${agent.status}">${agent.status}</span>
+        <button class="btn btn-small" onclick="deleteAgent('${agent.agent_id}')">✕</button>
     </div>`;
 }
 
@@ -68,14 +90,37 @@ async function createTask() {
 }
 
 async function assignAgentPrompt(taskId) {
-    const agentId = prompt('Введите ID агента:');
-    if (!agentId) return;
-    await fetch('/orchestrator/set_status', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({task_id: taskId, status: 'in_progress', agent_id: agentId})
-    });
-    loadTasks();
+    // Reload agents to get current list
+    try {
+        const agentsResp = await fetch('/orchestrator/agents');
+        const agentsData = await agentsResp.json();
+        const agents = agentsData.agents || [];
+        
+        if (agents.length === 0) {
+            alert('Нет зарегистрированных агентов. Зарегистрируйте агента первой.');
+            return;
+        }
+        
+        const choices = agents.map(a => `${a.agent_id} (${a.zone})`).join('\n');
+        const selected = prompt('Выберите агента (введите ID):\n' + choices);
+        if (!selected) return;
+        
+        const agent = agents.find(a => a.agent_id === selected);
+        if (!agent) {
+            alert('Агент не найден');
+            return;
+        }
+        
+        await fetch('/orchestrator/set_status', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({task_id: taskId, status: 'in_progress', agent_id: selected})
+        });
+        loadTasks();
+    } catch (err) {
+        console.error('Assign agent error:', err);
+        alert('Ошибка: ' + err.message);
+    }
 }
 
 async function registerAgentPrompt() {
@@ -88,6 +133,12 @@ async function registerAgentPrompt() {
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({agent_id: agentId, zone: zone})
     });
+    loadAgents();
+}
+
+async function deleteAgent(agentId) {
+    if (!confirm('Удалить агента ' + agentId + '?')) return;
+    await fetch('/orchestrator/delete_agent/' + agentId, {method: 'DELETE'});
     loadAgents();
 }
 
@@ -105,8 +156,8 @@ async function verifyAllTasks() {
         console.log('Tasks to verify:', data.tasks);
 
         for (const task of data.tasks) {
-            // Check tasks that need validation
-            if (['pending', 'in_progress', 'verification_pending'].includes(task.status)) {
+            // Check only tasks assigned to agents
+            if (['pending', 'in_progress', 'verification_pending'].includes(task.status) && task.agent_id) {
                 console.log('Verifying task:', task.task_id);
                 try {
                     const verifyResp = await fetch('/orchestrator/verify', {
