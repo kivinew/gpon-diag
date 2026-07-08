@@ -4,6 +4,7 @@ import logging
 import re
 import select
 import socket
+import threading
 import time
 from typing import Optional
 
@@ -42,17 +43,20 @@ class TelnetSession:
         self._max_idle_seconds: int = 120
         self._skip_disconnect: bool = False  # If True, don't reconnect to preserve sessions
         self._connect_attempts: int = 0  # Track failed connection attempts
+        self._lock = threading.RLock()  # Lock for thread-safe access to _skip_disconnect and other shared state
+        self._banner = ""
 
     def _check_idle_timeout(self):
         """Auto-disconnect if idle too long (prevents session exhaustion)."""
-        now = time.time()
-        if self._connected and (now - self._last_used) > self._max_idle_seconds:
-            logger.info(f"Auto-disconnecting idle connection to {self.host}")
-            if self._sock:
-                try: self._sock.close()
-                except: pass
-                self._sock = None
-            self._connected = False
+        with self._lock:
+            now = time.time()
+            if self._connected and (now - self._last_used) > self._max_idle_seconds:
+                logger.info(f"Auto-disconnecting idle connection to {self.host}")
+                if self._sock:
+                    try: self._sock.close()
+                    except: pass
+                    self._sock = None
+                self._connected = False
 
     def connect(self):
         if self._connect_attempts > 0:  # Already had failed attempts
@@ -133,21 +137,21 @@ class TelnetSession:
             self._sock = None
             self._connected = False
             raise
-
     def disconnect(self):
-        if self._sock:
-            try:
-                self._sock.sendall(b"quit\r")
-                time.sleep(0.1)
-            except Exception:
-                pass
-            try:
-                self._sock.close()
-            except Exception:
-                pass
-            self._sock = None
-        self._connected = False
-        self._connect_attempts = 0  # Reset for next time
+        with self._lock:
+            if self._sock:
+                try:
+                    self._sock.sendall(b"quit\r")
+                    time.sleep(0.1)
+                except Exception:
+                    pass
+                try:
+                    self._sock.close()
+                except Exception:
+                    pass
+                self._sock = None
+            self._connected = False
+            self._connect_attempts = 0  # Reset for next time
 
     def __enter__(self):
         self.connect()
@@ -157,16 +161,18 @@ class TelnetSession:
         self.disconnect()
 
     def _write(self, text):
-        if self._skip_disconnect:
-            raise ConnectionError(f"Connection to {self.host} is blocked")
+        with self._lock:
+            if self._skip_disconnect:
+                raise ConnectionError(f"Connection to {self.host} is blocked")
         try:
             if self._sock is None:
                 raise OSError("Socket not initialized")
             self._sock.sendall(text.encode("utf-8"))
         except (ConnectionResetError, BrokenPipeError, OSError) as e:
             logger.warning(f"Write failed ({e})")
-            self._connected = False
-            self._skip_disconnect = True
+            with self._lock:
+                self._connected = False
+                self._skip_disconnect = True
             raise
 
     def _read_to_prompt(self, seconds=2):
@@ -191,14 +197,17 @@ class TelnetSession:
 
     def send_command(self, command, max_more=0):
         """Send command and get output."""
-        if self._skip_disconnect:
-            raise ConnectionError(f"Connection blocked")
+        with self._lock:
+            if self._skip_disconnect:
+                raise ConnectionError(f"Connection blocked")
 
         self._check_idle_timeout()
-        self._last_used = time.time()
+        with self._lock:
+            self._last_used = time.time()
 
         if self._sock is None or not self._connected:
-            self._connected = False
+            with self._lock:
+                self._connected = False
             raise OSError("Socket not initialized")
 
         try:
@@ -227,7 +236,7 @@ class TelnetSession:
                 time.sleep(0.3)
                 output += self._read_to_prompt(2)
 
-        if re.search(r'\}\s*:\s*$', output.rstrip()):
+        if re.search(r'}\s*:\s*$', output.rstrip()):
             self._write("\r")
             time.sleep(0.5)
             output += self._read_to_prompt(5)
