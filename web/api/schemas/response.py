@@ -218,6 +218,8 @@ class HealthResponse(BaseModel):
     db_connected: bool
     olt_pool_size: int
     active_connections: int
+    timestamp: str = ""  # Added for compatibility
+    olt_pool_active: int = 0  # Alias for active_connections
 
 
 # ──────────────────────────────────────────────

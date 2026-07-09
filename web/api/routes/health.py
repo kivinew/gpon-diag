@@ -17,7 +17,6 @@ router = APIRouter()
 # Track startup time
 _start_time = time.time()
 
-
 @router.get("/health", response_model=HealthResponse, summary="Health check")
 async def health_check(
     db: AsyncSession = Depends(get_db),
@@ -27,13 +26,14 @@ async def health_check(
     """Liveness/readiness probe for systemd and load balancers."""
     db_connected = False
     try:
+        from sqlalchemy import text
         await db.execute(text("SELECT 1"))
         db_connected = True
     except Exception:
         pass
 
     # Count active OLT connections
-    from core.olt import _olt_registry
+    from core.connection_pool import _olt_registry
     active_connections = 0
     pool_size = 0
     for host, conns in _olt_registry.items():
@@ -42,6 +42,7 @@ async def health_check(
             if c._connected:
                 active_connections += 1
 
+    from datetime import datetime
     return HealthResponse(
         status="ok" if db_connected else "degraded",
         version="0.2.0",
@@ -49,6 +50,8 @@ async def health_check(
         db_connected=db_connected,
         olt_pool_size=pool_size,
         active_connections=active_connections,
+        timestamp=datetime.now().isoformat(),
+        olt_pool_active=active_connections,
     )
 
 
