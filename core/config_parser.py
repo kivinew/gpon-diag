@@ -1,8 +1,9 @@
 """Configuration parsing and threshold building."""
+"""Configuration parsing and threshold building with validation."""
 
 from core.thresholds import Thresholds
 from core.constants import DEFAULT_THRESHOLDS
-
+from core.config_validator import load_config_with_validation, validate_config_file, PYDANTIC_AVAILABLE
 
 # Map of Thresholds field names to config.yaml keys
 # When a key is missing from config, the Thresholds dataclass default is used.
@@ -30,7 +31,7 @@ def _build_thresholds(config: dict) -> Thresholds:
     """Build Thresholds from config dict, falling back to dataclass defaults.
     
     Args:
-        config: Configuration dictionary from config.yaml
+        config: Configuration dictionary from config.yaml (already validated)
         
     Returns:
         Thresholds object with values from config or defaults
@@ -47,10 +48,10 @@ def _build_thresholds(config: dict) -> Thresholds:
 
 
 def load_config(path: str = "config.yaml"):
-    """Load YAML config file."""
-    import yaml
-    import os
-    if not os.path.exists(path):
-        raise FileNotFoundError(f"Config file '{path}' not found")
-    with open(path, "r", encoding="utf-8") as f:
-        return yaml.safe_load(f)
+    """Load and validate YAML config file.
+    
+    Uses Pydantic validation if available, otherwise manual validation.
+    Raises FileNotFoundError if config doesn't exist.
+    Raises ValueError if validation fails.
+    """
+    return load_config_with_validation(path)
