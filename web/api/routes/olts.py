@@ -9,6 +9,7 @@ from web.api.deps import get_config
 from web.api.schemas import OLTsResponse, OLTInfo
 from web.api.exceptions import OLTConnectionError
 from core.olt import get_olt_connection
+from core.utils import load_olt_credentials as _load_olt_credentials
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +44,7 @@ async def get_olt_status(host: str, config=Depends(get_config)):
     if not olt_config:
         raise HTTPException(404, f"OLT {host} not found in config")
 
-    from diagnose import _load_olt_credentials
+    from core.utils import load_olt_credentials as _load_olt_credentials
 
     username, password = _load_olt_credentials(olt_config)
     if not username or not password:

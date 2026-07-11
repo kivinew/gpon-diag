@@ -12,7 +12,7 @@ import os
 from web.api.deps import get_config, get_db, get_olt_pool, lifespan_init, lifespan_shutdown
 from web.api.exceptions import register_exception_handlers
 from web.api.routes import (
-    diagnose, optics, search, actions, history, port_summary, olts, health, ws
+    diagnose, optics, search, actions, history, port_summary, olts, health, ws, pages
 )
 
 logger = logging.getLogger(__name__)
@@ -74,10 +74,9 @@ def create_app() -> FastAPI:
     # WebSocket routes (no /api prefix)
     app.include_router(ws.router, tags=["websocket"])
 
-    # Static files (built React SPA) — served in production
-    static_dir = os.path.join(os.path.dirname(__file__), "..", "static")
-    if os.path.isdir(static_dir):
-        app.mount("/", StaticFiles(directory=static_dir, html=True), name="static")
+    # Page routes (serve Jinja2 UI)
+    app.include_router(pages.router, tags=["pages"])
+    pages.mount_static(app)
 
     return app
 

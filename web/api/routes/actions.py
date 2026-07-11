@@ -23,7 +23,8 @@ router = APIRouter()
 # ──────────────────────────────────────────────
 async def get_olt_and_location(address: str, olt_host: str | None, config: dict):
     """Resolve OLT connection and ONT location."""
-    from diagnose import parse_input, _load_olt_credentials, find_available_olt
+    from core.utils import parse_input, load_olt_credentials as _load_olt_credentials
+    from core.connection_diagnosis import find_available_olt
 
     input_data = parse_input(address)
 

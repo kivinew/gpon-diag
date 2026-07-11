@@ -1,4 +1,4 @@
-from web.api.routes import diagnose, optics, search, actions, history, port_summary, olts, health, ws
+from web.api.routes import diagnose, optics, search, actions, history, port_summary, olts, health, ws, pages
 
 __all__ = [
     "diagnose",
@@ -10,4 +10,5 @@ __all__ = [
     "olts",
     "health",
     "ws",
+    "pages",
 ]

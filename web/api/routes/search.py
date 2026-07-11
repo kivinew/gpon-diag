@@ -21,7 +21,7 @@ router = APIRouter()
 # ──────────────────────────────────────────────
 def search_on_single_olt(olt_config: dict, input_data: dict) -> SearchResultItem | None:
     """Search ONT on a single OLT (sync, for thread pool)."""
-    from diagnose import _load_olt_credentials
+    from core.utils import load_olt_credentials as _load_olt_credentials
     from core.parser import parse_ont_info, parse_optical_info
     from core.models import OntMetrics
 
@@ -85,7 +85,8 @@ def search_on_single_olt(olt_config: dict, input_data: dict) -> SearchResultItem
 
 async def search_across_olts(input_data: dict, config: dict, olt_host: str | None) -> list[SearchResultItem]:
     """Search ONT across one or all OLTs in parallel."""
-    from diagnose import parse_input
+    from core.utils import parse_input
+    from core.utils import load_olt_credentials as _load_olt_credentials
 
     if olt_host:
         olts = [o for o in config.get("olts", []) if o.get("host") == olt_host]
@@ -93,7 +94,6 @@ async def search_across_olts(input_data: dict, config: dict, olt_host: str | Non
         # Filter OLTs with credentials
         olts = []
         for o in config.get("olts", []):
-            from diagnose import _load_olt_credentials
             u, p = _load_olt_credentials(o)
             if u and p:
                 olts.append(o)
