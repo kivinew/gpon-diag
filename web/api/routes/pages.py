@@ -6,6 +6,7 @@ make the FastAPI server render them so users don't get raw JSON at "/".
 """
 import os
 import logging
+from pathlib import Path
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
@@ -23,9 +24,21 @@ STATIC_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "static")
 def _get_olts_from_config() -> list:
     """Load OLT list from config.yaml for template dropdowns."""
     try:
-        from web.api.deps import get_config
-        config = get_config()
-        return config.get("olts", [])
+        import yaml
+        # Resolve config.yaml relative to project root (same logic as deps.get_config)
+        here = Path(__file__).resolve()
+        candidates = [
+            here.parents[3] / "config.yaml",   # project root via parents
+            here.parents[2] / "config.yaml",   # fallback: web/api/../../
+            Path.cwd() / "config.yaml",         # CWD
+        ]
+        for cfg_path in candidates:
+            if cfg_path.exists():
+                with cfg_path.open("r", encoding="utf-8") as f:
+                    config = yaml.safe_load(f) or {}
+                return config.get("olts", [])
+        logger.warning("config.yaml not found in any expected location")
+        return []
     except Exception as e:
         logger.warning(f"Failed to load OLT config: {e}")
         return []
