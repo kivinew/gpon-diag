@@ -141,12 +141,12 @@ def _build_thresholds() -> Thresholds:
         olt_rx_power_crit=-35.0,
         bip_error_warn=10000,
         bip_error_crit=100000,
-        cpu_temp_warn=75,
+        cpu_temp_warn=80,
         cpu_temp_crit=90,
         cpu_usage_warn=90,
         ont_temperature_warn=65,
         ont_temperature_crit=75,
-        memory_usage_warn=85,
+        memory_usage_warn=90,
         distance_warn=19000,
         distance_crit=20000
     )
