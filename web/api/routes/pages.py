@@ -5,6 +5,7 @@ The human-readable web UI lives in web/templates + web/static. These routes
 make the FastAPI server render them so users don't get raw JSON at "/".
 """
 import os
+import logging
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
@@ -13,8 +14,74 @@ from fastapi.templating import Jinja2Templates
 from starlette.datastructures import URLPath
 from starlette.routing import Mount
 
+logger = logging.getLogger(__name__)
+
 TEMPLATES_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "templates")
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "static")
+
+
+def _get_olts_from_config() -> list:
+    """Load OLT list from config.yaml for template dropdowns."""
+    try:
+        from web.api.deps import get_config
+        config = get_config()
+        return config.get("olts", [])
+    except Exception as e:
+        logger.warning(f"Failed to load OLT config: {e}")
+        return []
+
+
+def _get_history_from_db() -> list:
+    """Load recent diagnosis history from DB for template tables."""
+    try:
+        from web.api.deps import get_session_maker
+        from sqlalchemy import select
+        from web.api.models import Diagnosis
+        import asyncio
+
+        session_maker = get_session_maker()
+        # Use a new event loop if none is running (sync context)
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        if loop and loop.is_running():
+            # We're inside an async context — schedule via anyio
+            import anyio
+            result = anyio.from_thread.run(_sync_load_history, session_maker)
+            return result
+        else:
+            return _sync_load_history(session_maker)
+    except Exception as e:
+        logger.warning(f"Failed to load history for template: {e}")
+        return []
+
+
+def _sync_load_history(session_maker) -> list:
+    """Synchronous helper to load history rows."""
+    from web.api.models import Diagnosis
+    from sqlalchemy import select
+
+    with session_maker() as session:
+        stmt = (
+            select(Diagnosis)
+            .order_by(Diagnosis.created_at.desc())
+            .limit(50)
+        )
+        rows = session.execute(stmt).scalars().all()
+        result = []
+        for row in rows:
+            result.append({
+                "id": row.id,
+                "olt_name": row.olt_name,
+                "olt_host": row.olt_host,
+                "ont_address": row.ont_address,
+                "input_value": row.input_value,
+                "created_at": row.created_at,
+                "report": None,  # report is parsed from report_json on demand
+            })
+        return result
 
 
 class StaticMount(Mount):

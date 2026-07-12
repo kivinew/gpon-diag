@@ -83,4 +83,6 @@ def api_diagnose():
 # =====================
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    # On WSL/Windows the reloader (watchdog/stat) is unreliable — disable it.
+    use_reloader = sys.platform not in ("win32", "linux")
+    app.run(host="0.0.0.0", port=5000, debug=True, use_reloader=use_reloader)
