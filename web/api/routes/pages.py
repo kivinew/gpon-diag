@@ -111,17 +111,29 @@ router = APIRouter()
 
 @router.get("/", response_class=HTMLResponse, include_in_schema=False)
 async def page_dashboard(request: Request):
-    return templates.TemplateResponse(request=request, name="dashboard.html")
+    olts = _get_olts_from_config()
+    return templates.TemplateResponse(
+        request=request, name="dashboard.html",
+        context={"olts": olts, "history": []},
+    )
 
 
 @router.get("/dashboard", response_class=HTMLResponse, include_in_schema=False)
 async def page_dashboard_alias(request: Request):
-    return templates.TemplateResponse(request=request, name="dashboard.html")
+    olts = _get_olts_from_config()
+    return templates.TemplateResponse(
+        request=request, name="dashboard.html",
+        context={"olts": olts, "history": []},
+    )
 
 
 @router.get("/index", response_class=HTMLResponse, include_in_schema=False)
 async def page_index(request: Request):
-    return templates.TemplateResponse(request=request, name="index.html")
+    olts = _get_olts_from_config()
+    return templates.TemplateResponse(
+        request=request, name="index.html",
+        context={"olts": olts, "history": []},
+    )
 
 
 @router.get("/result", response_class=HTMLResponse, include_in_schema=False)

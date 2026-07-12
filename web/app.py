@@ -51,16 +51,49 @@ class PortSnapshot(db.Model):
 
 logger = logging.getLogger(__name__)
 
+
+# ===================== Helpers =====================
+
+def _load_olts():
+    """Load OLT list from config.yaml."""
+    try:
+        import yaml
+        config_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config.yaml"
+        )
+        with open(config_path, "r", encoding="utf-8") as f:
+            config = yaml.safe_load(f) or {}
+        return config.get("olts", [])
+    except Exception:
+        return []
+
+
+def _load_history():
+    """Load recent diagnosis history from DB."""
+    try:
+        rows = Diagnosis.query.order_by(Diagnosis.created_at.desc()).limit(50).all()
+        return [
+            {
+                "id": r.id, "olt_name": r.olt_name, "olt_host": r.olt_host,
+                "ont_address": r.ont_address, "input_value": r.input_value,
+                "created_at": r.created_at,
+            }
+            for r in rows
+        ]
+    except Exception:
+        return []
+
+
 # ===================== Main Routes =====================
 
 @app.route("/")
 def index():
-    return render_template("index.html")
+    return render_template("index.html", olts=_load_olts(), history=_load_history())
 
 
 @app.route("/dashboard")
 def dashboard():
-    return render_template("dashboard.html")
+    return render_template("dashboard.html", olts=_load_olts(), history=_load_history())
 
 
 @app.route("/result")
