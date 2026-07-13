@@ -118,6 +118,12 @@ async def lifespan_init():
     get_config()
     get_thresholds()
     get_db_engine()
+
+    # Create tables if they don't exist
+    from web.api.models import Base
+    async with get_db_engine().begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
     # Test DB connection
     async with get_session_maker()() as session:
         await session.execute(text("SELECT 1"))
