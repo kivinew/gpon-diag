@@ -131,10 +131,17 @@ uv run python -m tests.test_smoke
 ### Web-интерфейс
 
 ```bash
-uv run python -m web.app
-```
+# FastAPI (рекомендуется) — порт 8000
+uv run python -m web.api.main
 
-Откройте http://localhost:5000 в браузере.
+# Или через uvicorn
+uv run uvicorn web.api.main:app --host 0.0.0.0 --port 8000
+
+# Доступно:
+# - Главная страница: http://localhost:8000/index
+# - Дашборд: http://localhost:8000/dashboard
+# - API docs: http://localhost:8000/docs
+```
 
 ## Конфигурация
 
