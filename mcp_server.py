@@ -12,6 +12,7 @@ from typing import Any
 
 from mcp.server import Server, NotificationOptions
 import mcp.types as types
+import mcp.server.stdio
 from mcp.server.models import InitializationOptions
 
 # Import GPON core modules
@@ -436,7 +437,6 @@ def _collect_diagnosis_data(olt: OltConnection, frame: str, slot: str, port: str
 
 def run():
     """Run the MCP server via stdio."""
-    import mcp.server.stdio
     import asyncio
     
     asyncio.run(_run_async())
